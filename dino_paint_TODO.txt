@@ -1,0 +1,31 @@
+
+/ Why 646 annotated pixels from extract_annotated_pixels()?
+--> postprocessing in extract_annotated_pixels verstehen und kontrollieren...
+
+Rohes input image als feature mitgeben
+Mit vgg16 vergleichen und kombinieren...
+
+Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
+
+(Idee RS: gaussian smoothing zuerst?)
+
+
+
+
+
+// Bessere Auflösung; z.B. scale input image, am schluss wieder runter scalen (wie wenn patch_sizes grösser/kleiner wären)
+
+// --> image_scaled wird komisch; siehe Astro-Bild...
+
+// Correctly normalized? --> see mean and sd afterwards (!= used ...)
+// --> von Hand normalisieren und testen
+
+// Correctly unlinearized?
+
+// Normalization numbers correct? --> ok
+// Pillow RGB ... --> ok
+
+// Bigger Pic
+// RGB input...
+
+// Effect of Resize? --> why not working with those data types? --> works only on tensors or pil images
