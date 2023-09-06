@@ -151,7 +151,7 @@ def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, dinov
         viewer.add_image(features_space_predict)
     return predicted_labels, image_to_predict, features_space_predict
 
-def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, dinov2_model='s'):
+def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, dinov2_model='s', show_napari=False):
     image_to_train = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
     labels_to_train = scale_to_patch(labels, crop_to_patch, scale, interpolation_order=0)
     features_train = extract_single_image_dinov2_features(image_to_train, dinov2_model)
@@ -164,4 +164,10 @@ def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, dinov2_m
     features_space_predict = features_space_train
     predictions = random_forest.predict(features_predict)
     predicted_labels = predict_to_image(predictions, image_to_predict.shape, interpolation_order=0)
+    if show_napari:
+        viewer = napari.Viewer()
+        viewer.add_image(image_to_train.astype(np.int32))
+        viewer.add_labels(labels_to_train)
+        viewer.add_labels(predicted_labels)
+        viewer.add_image(features_space_predict)    
     return predicted_labels, image_to_predict, features_space_predict
