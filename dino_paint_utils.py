@@ -6,33 +6,28 @@ from skimage.transform import resize
 import torch
 from torchvision.transforms import ToTensor
 
-def extract_single_image_dinov2_features(image, labels, dinov2_model='s', crop_to_patch=True, scale=1, print_shapes=False):
+def extract_single_image_dinov2_features(image, dinov2_model='s'):
     models = {'s': 'dinov2_vits14',
               'b': 'dinov2_vitb14',
               'l': 'dinov2_vitl14',
               'g': 'dinov2_vitg14'}
     model = torch.hub.load('facebookresearch/dinov2', models[dinov2_model], pretrained=True)
     dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-    dinov2_patch_size = (14,14)
 
-    image_scaled, labels_scaled = scale_to_patch(image, labels, crop_to_patch=crop_to_patch, scale=scale, patch_size=dinov2_patch_size, print_shapes=print_shapes)
-    
-    image_scaled = image_scaled.astype(np.float32)
-    labels_scaled = labels_scaled.astype(np.int32)
-
-    if image_scaled.ndim == 2:
-        image_rgb = np.stack((image_scaled,)*3, axis=-1)
+    if image.ndim == 2:
+        image_rgb = np.stack((image,)*3, axis=-1)
     else:
-        image_rgb = image_scaled
+        image_rgb = image
 
+    image = image.astype(np.float32)
     image_norm = normalize_np_array(image_rgb, dinov2_mean, dinov2_sd, axis = (0,1))
     image_tensor = ToTensor()(image_norm).float()
 
     features = extract_single_tensor_dinov2_features(image_tensor, model)
 
-    return features, image_scaled, labels_scaled
+    return features
 
-def scale_to_patch(image, labels, crop_to_patch=True, scale=1, patch_size=(14,14), print_shapes=False):
+def scale_to_patch(image, crop_to_patch=True, scale=1, interpolation_order=0, patch_size=(14,14), print_shapes=False):
     if crop_to_patch:
         crop_shape = (int(np.floor(image.shape[0]/patch_size[0]))*patch_size[0],
                     int(np.floor(image.shape[1]/patch_size[1]))*patch_size[1])
@@ -44,9 +39,7 @@ def scale_to_patch(image, labels, crop_to_patch=True, scale=1, patch_size=(14,14
                     int(np.ceil(image.shape[1]/patch_size[1]))*patch_size[1] * scale)
 
     image_cropped = image[0:crop_shape[0], 0:crop_shape[1]]
-    labels_cropped = labels[0:crop_shape[0], 0:crop_shape[1]]
-    image_scaled = resize(image_cropped, in_shape, mode='edge', order=1, preserve_range=True)
-    labels_scaled = resize(labels_cropped, in_shape, mode='edge', order=0, preserve_range=True)
+    image_scaled = resize(image_cropped, in_shape, mode='edge', order=interpolation_order, preserve_range=True)
 
     # Calculate the shape of the patched image (i.e. how many patches fit in the image)
     if not (in_shape[0]%patch_size[0] == 0 and in_shape[1]%patch_size[1] == 0):
@@ -60,7 +53,7 @@ def scale_to_patch(image, labels, crop_to_patch=True, scale=1, patch_size=(14,14
         print(f"Shape of input used for model (multiple of patch size): {in_shape[0]} x {in_shape[1]} pixels")
         print(f"Patched image shape: {patched_image_shape[0]} x {patched_image_shape[1]} patches")
 
-    return image_scaled, labels_scaled
+    return image_scaled
 
 def normalize_np_array(array, new_mean, new_sd, axis=(0,1)):
     current_mean, current_sd = np.mean(array, axis=axis), np.std(array, axis=axis)
