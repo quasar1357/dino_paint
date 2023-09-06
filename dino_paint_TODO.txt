@@ -1,22 +1,28 @@
 
-Wir trainen mit 14x14 features! Nicht nötig, oder gar schlecht ?!
---> z.B. labels runter scalen statt features rauf... --> auch schneller
-
-Docstrings...
-
-/ Why 646 annotated pixels from extract_annotated_pixels()?
-/ --> postprocessing in extract_annotated_pixels verstehen und kontrollieren...
-
 Rohes input image als feature mitgeben
 Mit vgg16 vergleichen und kombinieren...
 
+Interpolation in anderen beispielen (links)
+
 Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
+
+/ Why 646 annotated pixels from extract_annotated_pixels()?
+/ --> postprocessing in extract_annotated_pixels verstehen und kontrollieren...
 
 (Idee RS: gaussian smoothing zuerst?)
 
 
 
+======================================
 
+/ Docstrings...
+
+======================================
+
+
+
+// Wir trainen mit 14x14 features! Nicht nötig, oder gar schlecht ?!
+// --> z.B. labels runter scalen statt features rauf? --> auch schneller
 
 // Bessere Auflösung; z.B. scale input image, am schluss wieder runter scalen (wie wenn patch_sizes grösser/kleiner wären)
 
