@@ -1,3 +1,4 @@
+import napari
 from napari_convpaint.conv_paint_utils import (train_classifier,
                                                extract_annotated_pixels)
 import numpy as np
@@ -123,18 +124,44 @@ def get_patched_image_shape(image_shape, patch_size=(14,14)):
 
 ### PUT EVERYTHING TOGETHER ###
 
-def train_dino_forest(image, labels, crop_to_patch=True, scale=1, dinov2_model='s'):
+def train_dino_forest(image, labels, crop_to_patch=True, scale=1, dinov2_model='s', show_napari=False):
     image_to_train = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
     labels_to_train = scale_to_patch(labels, crop_to_patch, scale, interpolation_order=0)
-    features_trained = extract_single_image_dinov2_features(image_to_train, dinov2_model)
-    features_space_trained = dino_features_to_image(features_trained, image_to_train.shape)
-    features_annot, targets = extract_annotated_pixels(features_space_trained, labels_to_train, full_annotation=False)
+    features_train = extract_single_image_dinov2_features(image_to_train, dinov2_model)
+    features_space_train = dino_features_to_image(features_train, image_to_train.shape)
+    features_annot, targets = extract_annotated_pixels(features_space_train, labels_to_train, full_annotation=False)
     random_forest = train_classifier(features_annot, targets)
-    return random_forest, image_to_train, labels_to_train
+    if show_napari:
+        viewer = napari.Viewer()
+        viewer.add_image(image_to_train.astype(np.int32))
+        viewer.add_labels(labels_to_train)
+        viewer.add_image(features_space_train)
+    return random_forest, image_to_train, labels_to_train, features_space_train
 
-def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, dinov2_model='s'):
+def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, dinov2_model='s', show_napari=False):
     image_to_predict = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
-    features_to_predict = extract_single_image_dinov2_features(image_to_predict, dinov2_model)
-    predictions = random_forest.predict(features_to_predict)
+    features_predict = extract_single_image_dinov2_features(image_to_predict, dinov2_model)
+    features_space_predict = dino_features_to_image(features_predict, image_to_predict.shape)
+    predictions = random_forest.predict(features_predict)
     predicted_labels = predict_to_image(predictions, image_to_predict.shape, interpolation_order=0)
-    return predicted_labels, image_to_predict
+    if show_napari:
+        viewer = napari.Viewer()
+        viewer.add_image(image_to_predict.astype(np.int32))
+        viewer.add_labels(predicted_labels)
+        viewer.add_image(features_space_predict)
+    return predicted_labels, image_to_predict, features_space_predict
+
+def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, dinov2_model='s'):
+    image_to_train = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
+    labels_to_train = scale_to_patch(labels, crop_to_patch, scale, interpolation_order=0)
+    features_train = extract_single_image_dinov2_features(image_to_train, dinov2_model)
+    features_space_train = dino_features_to_image(features_train, image_to_train.shape)
+    features_annot, targets = extract_annotated_pixels(features_space_train, labels_to_train, full_annotation=False)
+    random_forest = train_classifier(features_annot, targets)
+    # Directly use the features already extracted for prediction
+    image_to_predict = image_to_train
+    features_predict = features_train
+    features_space_predict = features_space_train
+    predictions = random_forest.predict(features_predict)
+    predicted_labels = predict_to_image(predictions, image_to_predict.shape, interpolation_order=0)
+    return predicted_labels, image_to_predict, features_space_predict
