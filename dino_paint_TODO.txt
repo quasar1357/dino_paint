@@ -23,6 +23,8 @@ Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
 
 // Wir trainen mit 14x14 features! Nicht nötig, oder gar schlecht ?!
 // --> z.B. labels runter scalen statt features rauf? --> auch schneller
+// ==> NEIN: Was, wenn unterschiedliche labels innerhalb patch?
+// ==> Zudem, wenn kombinieren wollen mit anderen features, besser pixelwise
 
 // Bessere Auflösung; z.B. scale input image, am schluss wieder runter scalen (wie wenn patch_sizes grösser/kleiner wären)
 
