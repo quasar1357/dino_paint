@@ -119,7 +119,7 @@ def predict_space_to_image(feature_space, random_forest):
 
 ### PUT EVERYTHING TOGETHER ###
 
-def train_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', append_image_as_feature=False, vgg16_layers=None, show_napari=False):
+def train_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a label image, and trains a random forest classifier on the DINOv2 features of the image.
     Returns the random forest, the image and labels used for training (both scaled to DINOv2's patch size) and the DINOv2 feature space.
@@ -129,15 +129,23 @@ def train_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=
     labels_scaled = scale_to_patch(labels, crop_to_patch, scale, interpolation_order=0)
     # Round to integers and convert to uint8 (labels must be integers)
     labels_scaled = np.round(labels_scaled).astype(np.uint8)
-    feature_space = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
+    # Extract features from the image given the DINOv2 model and/or VGG16 layers
+    if dinov2_model is None and vgg16_layers is None:
+        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
+        return
+    elif vgg16_layers is None:
+        feature_space = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
+    elif dinov2_model is None:
+        feature_space = extract_vgg16_features(image_scaled, vgg16_layers)
+    else:
+        dinov2_features = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
+        vgg16_features = extract_vgg16_features(image_scaled, vgg16_layers)
+        feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
     # Optionally append the image itself as feature
     if append_image_as_feature:
         image_as_feature = ensure_rgb(image_scaled)
         image_as_feature = image_as_feature.transpose(2,0,1)
         feature_space = np.concatenate((image_as_feature, feature_space), axis=0)
-    if vgg16_layers is not None:
-        vgg16_features = extract_vgg16_features(image_scaled, vgg16_layers)
-        feature_space = np.concatenate((feature_space, vgg16_features), axis=0)
     # Extract annotated pixels and train random forest
     features_annot, targets = extract_annotated_pixels(feature_space, labels_scaled, full_annotation=False)
     random_forest = train_classifier(features_annot, targets)
@@ -148,21 +156,29 @@ def train_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=
         viewer.add_labels(labels_scaled)
     return random_forest, image_scaled, labels_scaled, feature_space
 
-def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', append_image_as_feature=False, vgg16_layers=None, show_napari=False):
+def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a trained random forest classifier, and predicts labels for the image.
     Returns the predicted labels, the image used for prediction (scaled to DINOv2's patch size) and its DINOv2 feature space.
     '''
     image_scaled = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
-    feature_space = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
+    # Extract features from the image given the DINOv2 model and/or VGG16 layers
+    if dinov2_model is None and vgg16_layers is None:
+        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
+        return
+    elif vgg16_layers is None:
+        feature_space = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
+    elif dinov2_model is None:
+        feature_space = extract_vgg16_features(image_scaled, vgg16_layers)
+    else:
+        dinov2_features = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
+        vgg16_features = extract_vgg16_features(image_scaled, vgg16_layers)
+        feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
     # Optionally append the image itself as feature
     if append_image_as_feature:
         image_as_feature = ensure_rgb(image_scaled)
         image_as_feature = image_as_feature.transpose(2,0,1)
         feature_space = np.concatenate((image_as_feature, feature_space), axis=0)
-    if vgg16_layers is not None:
-        vgg16_features = extract_vgg16_features(image_scaled, vgg16_layers)
-        feature_space = np.concatenate((feature_space, vgg16_features), axis=0)
     # Use the interpolated feature space (optionally appended with other features) for prediction
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     if show_napari:
@@ -172,13 +188,13 @@ def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, upsca
         viewer.add_labels(predicted_labels)
     return predicted_labels, image_scaled, feature_space
 
-def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', append_image_as_feature=False, vgg16_layers=None, show_napari=False):
+def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a label image, and trains a random forest classifier on the DINOv2 features of the image.
     Then uses the trained random forest to predict labels for the image itself.
     Returns the predicted labels, the image and labels used for training (both scaled to DINOv2's patch size) and the DINOv2 feature space.
     '''
-    train = train_dino_forest(image, labels, crop_to_patch, scale, upscale_order, dinov2_model, append_image_as_feature, vgg16_layers, show_napari=False)
+    train = train_dino_forest(image, labels, crop_to_patch, scale, upscale_order, dinov2_model, vgg16_layers, append_image_as_feature, show_napari=False)
     random_forest, image_scaled, labels_scaled, feature_space = train
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     if show_napari:
