@@ -59,6 +59,22 @@ def extract_single_tensor_dinov2_features(image_tensor, model):
     features = features[0,:,:]    
     return features
 
+def dino_features_to_space(features, image_shape, interpolation_order=1, patch_size=(14,14)):
+    '''
+    Converts DINOv2 features to an image of a given shape.
+    '''
+    # Calculate number of features
+    num_features = features.shape[1]
+    # Calculate the shape of the patched image (i.e. how many patches fit in the image)
+    patched_image_shape = get_patched_image_shape(image_shape, patch_size)
+    # Reshape linear patches into 2D
+    feature_space = features.reshape(patched_image_shape[0], patched_image_shape[1], num_features)
+    # Upsample to the size of the original image
+    feature_space = resize(feature_space, image_shape[0:2], mode='edge', order=interpolation_order, preserve_range=True)
+    # Swap axes to get features in the first dimension
+    feature_space = feature_space.transpose(2,0,1)
+    return feature_space
+
 def scale_to_patch(image, crop_to_patch=True, scale=1, interpolation_order=1, patch_size=(14,14), print_shapes=False):
     '''
     Scales an image to a multiple of the patch size; optionally first crops it down to a multiple of the patch size.
@@ -83,22 +99,6 @@ def scale_to_patch(image, crop_to_patch=True, scale=1, interpolation_order=1, pa
         print(f"Patched image shape: {patched_image_shape[0]} x {patched_image_shape[1]} patches")
     return image_scaled
 
-def dino_features_to_space(features, image_shape, interpolation_order=1, patch_size=(14,14)):
-    '''
-    Converts DINOv2 features to an image of a given shape.
-    '''
-    # Calculate number of features
-    num_features = features.shape[1]
-    # Calculate the shape of the patched image (i.e. how many patches fit in the image)
-    patched_image_shape = get_patched_image_shape(image_shape, patch_size)
-    # Reshape linear patches into 2D
-    feature_image = features.reshape(patched_image_shape[0], patched_image_shape[1], num_features)
-    # Upsample to the size of the original image
-    feature_image = resize(feature_image, image_shape[0:2], mode='edge', order=interpolation_order, preserve_range=True)
-    # Swap axes to get features in the first dimension
-    feature_image = feature_image.transpose(2,0,1)
-    return feature_image
-
 def get_patched_image_shape(image_shape, patch_size=(14,14)):
     '''
     Calculate the shape of the patched image (i.e. how many patches fit in the image)
@@ -110,10 +110,13 @@ def get_patched_image_shape(image_shape, patch_size=(14,14)):
     return patched_image_shape
 
 def predict_space_to_image(feature_space, random_forest):
+    '''
+    Predicts labels for a feature space using a trained random forest classifier, returning predictions in the same shape as the image/feature space.
+    '''
     # linearize features (flatten spacial dimensions) for prediciton
     features = feature_space.reshape(feature_space.shape[0], -1).transpose()
     predictions = random_forest.predict(features)
-    # Reshape predictions to size of the image, which are the 2nd and 3rd dimensions of the feature space (1st = features)
+    # Reshape predictions back to size of the image, which are the 2nd and 3rd dimensions of the feature space (1st = features)
     predicted_labels = predictions.reshape(feature_space.shape[1], feature_space.shape[2])
     return predicted_labels
 
@@ -125,35 +128,16 @@ def train_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=
     Returns the random forest, the image and labels used for training (both scaled to DINOv2's patch size) and the DINOv2 feature space.
     '''
     image_scaled = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
+    feature_space = extract_feature_space(image_scaled, upscale_order, dinov2_model, vgg16_layers, append_image_as_feature)
     # NOTE: interpolation order must be 0 (nearest) for labels
     labels_scaled = scale_to_patch(labels, crop_to_patch, scale, interpolation_order=0)
-    # Round to integers and convert to uint8 (labels must be integers)
+    # Round to integers and convert to uint8 (labels must be integers); this step should technically not be necessary with interpolation order = 0
     labels_scaled = np.round(labels_scaled).astype(np.uint8)
-    # Extract features from the image given the DINOv2 model and/or VGG16 layers
-    if dinov2_model is None and vgg16_layers is None:
-        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
-        return
-    elif vgg16_layers is None:
-        feature_space = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
-    elif dinov2_model is None:
-        feature_space = extract_vgg16_features(image_scaled, vgg16_layers)
-    else:
-        dinov2_features = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
-        vgg16_features = extract_vgg16_features(image_scaled, vgg16_layers)
-        feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
-    # Optionally append the image itself as feature
-    if append_image_as_feature:
-        image_as_feature = ensure_rgb(image_scaled)
-        image_as_feature = image_as_feature.transpose(2,0,1)
-        feature_space = np.concatenate((image_as_feature, feature_space), axis=0)
     # Extract annotated pixels and train random forest
     features_annot, targets = extract_annotated_pixels(feature_space, labels_scaled, full_annotation=False)
     random_forest = train_classifier(features_annot, targets)
     if show_napari:
-        viewer = napari.Viewer()
-        viewer.add_image(feature_space)
-        viewer.add_image(image_scaled.astype(np.int32))
-        viewer.add_labels(labels_scaled)
+        show_results_napari(image=image_scaled, feature_space=feature_space, labels=labels_scaled)
     return random_forest, image_scaled, labels_scaled, feature_space
 
 def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
@@ -162,30 +146,11 @@ def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, upsca
     Returns the predicted labels, the image used for prediction (scaled to DINOv2's patch size) and its DINOv2 feature space.
     '''
     image_scaled = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
-    # Extract features from the image given the DINOv2 model and/or VGG16 layers
-    if dinov2_model is None and vgg16_layers is None:
-        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
-        return
-    elif vgg16_layers is None:
-        feature_space = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
-    elif dinov2_model is None:
-        feature_space = extract_vgg16_features(image_scaled, vgg16_layers)
-    else:
-        dinov2_features = extract_dinov2_features(image_scaled, upscale_order, dinov2_model)
-        vgg16_features = extract_vgg16_features(image_scaled, vgg16_layers)
-        feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
-    # Optionally append the image itself as feature
-    if append_image_as_feature:
-        image_as_feature = ensure_rgb(image_scaled)
-        image_as_feature = image_as_feature.transpose(2,0,1)
-        feature_space = np.concatenate((image_as_feature, feature_space), axis=0)
+    feature_space = extract_feature_space(image_scaled, upscale_order, dinov2_model, vgg16_layers, append_image_as_feature)
     # Use the interpolated feature space (optionally appended with other features) for prediction
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     if show_napari:
-        viewer = napari.Viewer()
-        viewer.add_image(feature_space)
-        viewer.add_image(image_scaled.astype(np.int32))
-        viewer.add_labels(predicted_labels)
+        show_results_napari(image=image_scaled, feature_space=feature_space, predicted_labels=predicted_labels)
     return predicted_labels, image_scaled, feature_space
 
 def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
@@ -198,18 +163,47 @@ def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_
     random_forest, image_scaled, labels_scaled, feature_space = train
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     if show_napari:
-        viewer = napari.Viewer()
-        viewer.add_image(feature_space)    
-        viewer.add_image(image_scaled.astype(np.int32))
-        viewer.add_labels(labels_scaled)
-        viewer.add_labels(predicted_labels)
+        show_results_napari(image, feature_space, labels, predicted_labels)
     return predicted_labels, image_scaled, labels_scaled, feature_space
 
-### COMBINE WITH VGG16 ###
+def extract_feature_space(image, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False):
+    '''
+    Extract features from the image given the DINOv2 model and/or VGG16 layers
+    '''
+    if dinov2_model is None and vgg16_layers is None:
+        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
+        return
+    elif vgg16_layers is None:
+        feature_space = extract_dinov2_features(image, upscale_order, dinov2_model)
+    elif dinov2_model is None:
+        feature_space = extract_vgg16_features(image, vgg16_layers)
+    else:
+        dinov2_features = extract_dinov2_features(image, upscale_order, dinov2_model)
+        vgg16_features = extract_vgg16_features(image, vgg16_layers)
+        feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
+    # Optionally append the image itself as feature
+    if append_image_as_feature:
+        image_as_feature = ensure_rgb(image)
+        image_as_feature = image_as_feature.transpose(2,0,1)
+        feature_space = np.concatenate((image_as_feature, feature_space), axis=0)
+    return feature_space
+
+def show_results_napari(image=None, feature_space=None, labels=None, predicted_labels=None):
+    '''
+    Shows the results of a DINOv2 feature extraction and/or prediction together with the image in napari.
+    '''
+    viewer = napari.Viewer()
+    if feature_space is not None: viewer.add_image(feature_space)
+    if image is not None: viewer.add_image(image.astype(np.int32))
+    if labels is not None: viewer.add_labels(labels)
+    if predicted_labels is not None: viewer.add_labels(predicted_labels)
+    return viewer
+
+### ADJUSTED WRAPPER FOR VGG16 ###
 
 from napari_convpaint.conv_paint_utils import Hookmodel, get_features_current_layers
 
-def extract_vgg16_features(image, layers, show_napari = False):
+def extract_vgg16_features(image, layers, show_napari=False):
     '''
     Extracts features from a single image at given layers of the VGG16 model. Returns a numpy array of shape (num_features, W, H).
     '''
@@ -235,7 +229,5 @@ def extract_vgg16_features(image, layers, show_napari = False):
     feature_space = feature_space.transpose(2,0,1)
     # Now we can view the feature space using napari
     if show_napari:
-        viewer = napari.Viewer
-        viewer.add_image(image)
-        viewer.add_image(feature_space)
+        show_results_napari(image, feature_space):
     return feature_space
