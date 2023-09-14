@@ -229,5 +229,5 @@ def extract_vgg16_features(image, layers, show_napari=False):
     feature_space = feature_space.transpose(2,0,1)
     # Now we can view the feature space using napari
     if show_napari:
-        show_results_napari(image, feature_space):
+        show_results_napari(image, feature_space)
     return feature_space
