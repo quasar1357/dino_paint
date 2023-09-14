@@ -102,7 +102,7 @@ def extract_feature_space(image, upscale_order=1, dinov2_model='s', vgg16_layers
 
 ### PREDICTION ###
 
-def predict_space_to_image(feature_space, random_forest):
+def predict_space_to_image(feature_space, random_forest, ground_truth=None):
     '''
     Predicts labels for a feature space using a trained random forest classifier, returning predictions in the same shape as the image/feature space.
     '''
@@ -111,6 +111,13 @@ def predict_space_to_image(feature_space, random_forest):
     predictions = random_forest.predict(features)
     # Reshape predictions back to size of the image, which are the 2nd and 3rd dimensions of the feature space (1st = features)
     predicted_labels = predictions.reshape(feature_space.shape[1], feature_space.shape[2])
+    # Optionally compare to ground truth
+    if ground_truth is not None:
+        if not ground_truth.shape == predicted_labels.shape:
+            raise ValueError('Ground truth and predicted labels must have the same shape')
+        else:
+            accuracy = np.sum(ground_truth == predicted_labels) / ground_truth.size
+            print(f'Accuracy of the prediction: {np.round(100*accuracy, 2)}%')
     return predicted_labels
 
 ### PUT EVERYTHING TOGETHER ###
@@ -134,15 +141,19 @@ def train_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=
         show_results_napari(image=image_scaled, feature_space=feature_space, labels=labels_scaled)
     return random_forest, image_scaled, labels_scaled, feature_space
 
-def predict_dino_forest(image, random_forest, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
+def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a trained random forest classifier, and predicts labels for the image.
     Returns the predicted labels, the image used for prediction (scaled to DINOv2's patch size) and its DINOv2 feature space.
     '''
     image_scaled = scale_to_patch(image, crop_to_patch, scale, interpolation_order=1)
     feature_space = extract_feature_space(image_scaled, upscale_order, dinov2_model, vgg16_layers, append_image_as_feature)
+    if ground_truth is not None:
+        ground_truth_scaled = scale_to_patch(ground_truth, crop_to_patch, scale, interpolation_order=0)
+    else:
+        ground_truth_scaled = None
     # Use the interpolated feature space (optionally appended with other features) for prediction
-    predicted_labels = predict_space_to_image(feature_space, random_forest)
+    predicted_labels = predict_space_to_image(feature_space, random_forest, ground_truth=ground_truth_scaled)
     # Optionally show everything in Napari
     if show_napari:
         show_results_napari(image=image_scaled, feature_space=feature_space, predicted_labels=predicted_labels)
