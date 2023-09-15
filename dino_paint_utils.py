@@ -1,6 +1,8 @@
 import napari
 from napari_convpaint.conv_paint_utils import (train_classifier,
-                                               extract_annotated_pixels)
+                                               extract_annotated_pixels,
+                                               Hookmodel,
+                                               get_features_current_layers)
 import numpy as np
 from skimage.transform import resize
 import torch
@@ -50,8 +52,6 @@ def extract_single_tensor_dinov2_features(image_tensor, model):
     return features
 
 # VGG16 feature extraction (adjusted wrapper)
-
-from napari_convpaint.conv_paint_utils import Hookmodel, get_features_current_layers
 
 def extract_vgg16_features(image, layers, show_napari=False):
     '''
@@ -153,16 +153,16 @@ def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=T
     if show_napari:
         show_results_napari(image=image_scaled, feature_space=feature_space, predicted_labels=predicted_labels)
     # Optionally compare to ground truth and calculate accuracy    
+    accuracy = None
     if ground_truth is not None:
         ground_truth_scaled = scale_to_patch(ground_truth, crop_to_patch, scale, interpolation_order=0)
         if not ground_truth_scaled.shape == predicted_labels.shape:
             raise ValueError('Ground truth and predicted labels must have the same shape')
         else:
-            accuracy = np.sum(ground_truth_scaled == predicted_labels) / ground_truth_scaled.size
-            return predicted_labels, image_scaled, feature_space, accuracy
-    return predicted_labels, image_scaled, feature_space
+            accuracy = np.sum(ground_truth_scaled == predicted_labels) / ground_truth_scaled.size    
+    return predicted_labels, image_scaled, feature_space, accuracy
 
-def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
+def selfpredict_dino_forest(image, labels, ground_truth=None, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a label image, and trains a random forest classifier on the DINOv2 features of the image.
     Then uses the trained random forest to predict labels for the image itself.
@@ -174,7 +174,15 @@ def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_
     # Optionally show everything in Napari
     if show_napari:
         show_results_napari(image_scaled, feature_space, labels_scaled, predicted_labels)
-    return predicted_labels, image_scaled, labels_scaled, feature_space
+    # Optionally compare to ground truth and calculate accuracy
+    accuracy = None 
+    if ground_truth is not None:
+        ground_truth_scaled = scale_to_patch(ground_truth, crop_to_patch, scale, interpolation_order=0)
+        if not ground_truth_scaled.shape == predicted_labels.shape:
+            raise ValueError('Ground truth and predicted labels must have the same shape')
+        else:
+            accuracy = np.sum(ground_truth_scaled == predicted_labels) / ground_truth_scaled.size
+    return predicted_labels, image_scaled, labels_scaled, feature_space, accuracy
 
 ### HELPER FUNCTIONS ###
 
@@ -261,9 +269,11 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
 
 ### TESTS USING GROUND TRUTH ###
 
-def test_dino_forest(image_to_train, labels_to_train, image_to_pred, ground_truth, scales=[1], dinos=['s'], vggs=[None], im_feats=[False], print_avg=False):
+def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, scales=[1], dinos=['s'], vggs=[None], im_feats=[False], print_avg=False):
     '''
-    Tests the accuracy of a DINOv2 model on a given image and ground truth for different scales, DINOv2 models, VGG16 layers and "image as feature" options.
+    Tests prediction accuracy of a DINOv2 model trained on a given image against a ground truth.
+    Tests for different scales, DINOv2 models, VGG16 layers and "image as feature" options.
+    Tests prediction on a given image, or, if no image to predict is specified (=None), on the image used for training itself (selfprediction).
     '''
     shape = (len(dinos), len(vggs), len(im_feats), len(scales))
     accuracies = np.zeros(shape)
@@ -273,14 +283,19 @@ def test_dino_forest(image_to_train, labels_to_train, image_to_pred, ground_trut
             print(f'Running tests for VGG16 layers {vgg}...')
             for i_i, im_feat in enumerate(im_feats):
                 for s_i, s in enumerate(scales):
+                    # Skip if neither DINOv2 model nor VGG16 layers are specified
                     if dino is None and vgg is None:
                         continue
-                    # print(f'model: dino {dino}, vgg16 layers {vgg}, image as feature {im_feat}, scale {s}')
-                    train = train_dino_forest(image_to_train, labels_to_train, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
-                    random_forest = train[0]
-                    pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
-                    accuracies[d_i, v_i, i_i, s_i] = pred[3]
-    
+                    # Selfpredict if no image to predict is specified
+                    if image_to_pred is None:
+                        pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                    # Otherwise predict labels for the given image
+                    else:
+                        train = train_dino_forest(image_to_train, labels_to_train, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                        random_forest = train[0]
+                        pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                    accuracies[d_i, v_i, i_i, s_i] = pred[-1]
+    # Calculate averages and optionally print them
     avg_dinos = np.zeros(len(dinos))
     avg_vggs = np.zeros(len(vggs))
     avg_im_feats = np.zeros(len(im_feats))
@@ -299,11 +314,11 @@ def test_dino_forest(image_to_train, labels_to_train, image_to_pred, ground_trut
         avg_im_feat = np.mean(accuracies[:,:,i_i,:][accuracies[:,:,i_i,:]!=0])
         avg_im_feats[i_i] = avg_im_feat
         if print_avg:
-            print(f'Average accuracy for image as feature {im_feat}: {np.round(100*avg_feat, 2)}%')
+            print(f'Average accuracy for image as feature {im_feat}: {np.round(100*avg_im_feat, 2)}%')
     for s_i, s in enumerate(scales):
         avg_scale = np.mean(accuracies[:,:,:,s_i][accuracies[:,:,:,s_i]!=0])
         avg_scales[s_i] = avg_scale
         if print_avg:
             print(f'Average accuracy for scale {s}: {np.round(100*avg_scale, 2)}%')
-
-    return accuracies, avg_dinos, avg_vggs, avg_im_feats, avg_scales
+    # Return the specific accuracies and the averages
+    return accuracies, (avg_dinos, avg_vggs, avg_im_feats, avg_scales)
