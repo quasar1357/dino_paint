@@ -10,7 +10,7 @@ from torchvision.transforms import ToTensor
 
 # DINOv2 Feature Extraction
 
-# Store loaded models in a dictionary to avoid loading the same model multiple times
+# Store loaded models in a global dictionary to avoid loading the same model multiple times
 loaded_models = {}
 
 def extract_dinov2_features(image, upscale_order=1, dinov2_model='s'):
@@ -21,9 +21,10 @@ def extract_dinov2_features(image, upscale_order=1, dinov2_model='s'):
               'b': 'dinov2_vitb14',
               'l': 'dinov2_vitl14',
               'g': 'dinov2_vitg14'}
-    if models[dinov2_model] not in loaded_models:
-        loaded_models[models[dinov2_model]] = torch.hub.load('facebookresearch/dinov2', models[dinov2_model], pretrained=True)
-    model = loaded_models[models[dinov2_model]]
+    dinov2_name = models[dinov2_model]
+    if dinov2_name not in loaded_models:
+        loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True)
+    model = loaded_models[dinov2_name]
     dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
     image_rgb = ensure_rgb(image)
     image_norm = normalize_np_array(image_rgb, dinov2_mean, dinov2_sd, axis = (0,1))
@@ -280,21 +281,29 @@ def test_dino_forest(image_to_train, labels_to_train, image_to_pred, ground_trut
                     pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
                     accuracies[d_i, v_i, i_i, s_i] = pred[3]
     
+    avg_dinos = np.zeros(len(dinos))
+    avg_vggs = np.zeros(len(vggs))
+    avg_im_feats = np.zeros(len(im_feats))
+    avg_scales = np.zeros(len(scales))
     for d_i, dino in enumerate(dinos):
         avg_dino = np.mean(accuracies[d_i,:,:,:][accuracies[d_i,:,:,:]!=0])
+        avg_dinos[d_i] = avg_dino
         if print_avg:
             print(f'Average accuracy for DINOv2 model {dino}: {np.round(100*avg_dino, 2)}%')
     for v_i, vgg in enumerate(vggs):
         avg_vgg = np.mean(accuracies[:,v_i,:,:][accuracies[:,v_i,:,:]!=0])
+        avg_vggs[v_i] = avg_vgg
         if print_avg:
             print(f'Average accuracy for VGG16 layers {vgg}: {np.round(100*avg_vgg, 2)}%')
     for i_i, im_feat in enumerate(im_feats):
-        avg_feat = np.mean(accuracies[:,:,i_i,:][accuracies[:,:,i_i,:]!=0])
+        avg_im_feat = np.mean(accuracies[:,:,i_i,:][accuracies[:,:,i_i,:]!=0])
+        avg_im_feats[i_i] = avg_im_feat
         if print_avg:
             print(f'Average accuracy for image as feature {im_feat}: {np.round(100*avg_feat, 2)}%')
     for s_i, s in enumerate(scales):
         avg_scale = np.mean(accuracies[:,:,:,s_i][accuracies[:,:,:,s_i]!=0])
+        avg_scales[s_i] = avg_scale
         if print_avg:
             print(f'Average accuracy for scale {s}: {np.round(100*avg_scale, 2)}%')
 
-    return accuracies, avg_dino, avg_vgg, avg_feat, avg_scale
+    return accuracies, avg_dinos, avg_vggs, avg_im_feats, avg_scales
