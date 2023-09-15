@@ -158,8 +158,7 @@ def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=T
             raise ValueError('Ground truth and predicted labels must have the same shape')
         else:
             accuracy = np.sum(ground_truth_scaled == predicted_labels) / ground_truth_scaled.size
-            # print(f'Accuracy of the prediction: {np.round(100*accuracy, 2)}%')
-            return accuracy
+            return predicted_labels, image_scaled, feature_space, accuracy
     return predicted_labels, image_scaled, feature_space
 
 def selfpredict_dino_forest(image, labels, crop_to_patch=True, scale=1, upscale_order=1, dinov2_model='s', vgg16_layers=None, append_image_as_feature=False, show_napari=False):
@@ -268,16 +267,18 @@ def test_dino_forest(image_to_train, labels_to_train, image_to_pred, ground_trut
     shape = (len(dinos), len(vggs), len(im_feats), len(scales))
     accuracies = np.zeros(shape)
     for d_i, dino in enumerate(dinos):
+        print(f'Running tests for DINOv2 model {dino}...')
         for v_i, vgg in enumerate(vggs):
+            print(f'Running tests for VGG16 layers {vgg}...')
             for i_i, im_feat in enumerate(im_feats):
                 for s_i, s in enumerate(scales):
                     if dino is None and vgg is None:
                         continue
                     # print(f'model: dino {dino}, vgg16 layers {vgg}, image as feature {im_feat}, scale {s}')
                     train = train_dino_forest(image_to_train, labels_to_train, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
-                    random_forest, image_train, labels_train, features_space_train = train
-                    acc = predict_dino_forest(image_to_pred, random_forest, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
-                    accuracies[d_i, v_i, i_i, s_i] = acc
+                    random_forest = train[0]
+                    pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                    accuracies[d_i, v_i, i_i, s_i] = pred[3]
     
     for d_i, dino in enumerate(dinos):
         avg_dino = np.mean(accuracies[d_i,:,:,:][accuracies[d_i,:,:,:]!=0])
