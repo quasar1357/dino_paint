@@ -157,7 +157,7 @@ def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=T
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     # Optionally show everything in Napari
     if show_napari:
-        show_results_napari(image=image_scaled, feature_space=feature_space, predicted_labels=predicted_labels)
+        show_results_napari(image=image_scaled, feature_space=feature_space, predicted_labels=predicted_labels, ground_truth=ground_truth)
     # Optionally compare to ground truth and calculate accuracy    
     accuracy = None
     if ground_truth is not None:
@@ -179,7 +179,7 @@ def selfpredict_dino_forest(image, labels, ground_truth=None, crop_to_patch=True
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     # Optionally show everything in Napari
     if show_napari:
-        show_results_napari(image_scaled, feature_space, labels_scaled, predicted_labels)
+        show_results_napari(image=image_scaled, feature_space=feature_space, labels=labels_scaled, predicted_labels=predicted_labels, ground_truth=ground_truth)
     # Optionally compare to ground truth and calculate accuracy
     accuracy = None 
     if ground_truth is not None:
@@ -262,7 +262,7 @@ def get_patched_image_shape(image_shape, patch_size=(14,14)):
         patched_image_shape = (int(image_shape[0]/patch_size[0]), int(image_shape[1]/patch_size[1]))
     return patched_image_shape
 
-def show_results_napari(image=None, feature_space=None, labels=None, predicted_labels=None):
+def show_results_napari(image=None, feature_space=None, labels=None, predicted_labels=None, ground_truth=None):
     '''
     Shows the results of a DINOv2 feature extraction and/or prediction together with the image in napari.
     '''
@@ -271,6 +271,7 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
     if image is not None: viewer.add_image(image.astype(np.int32))
     if labels is not None: viewer.add_labels(labels)
     if predicted_labels is not None: viewer.add_labels(predicted_labels)
+    if ground_truth is not None: viewer.add_labels(ground_truth)
     return viewer
 
 ### TESTS USING GROUND TRUTH ###

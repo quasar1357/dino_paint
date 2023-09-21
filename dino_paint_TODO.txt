@@ -1,14 +1,22 @@
-(scikit resize uses a lot of resources/time; Hinweise Guillaume)
 
-(Interpolation in anderen beispielen (links))
+Why are accuracies lower than before correcting the rgb/annotation bug?!
+
+Understand DINOv2; which model/layers (intermediate?) best for sem_seg? -> s. DINOv2 notebook
+
+
+----------
+
 
 Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
+
+(Interpolation in anderen beispielen --> s. links)
+
+(Scikit resize uses a lot of resources/time; Hinweise Guillaume)
 
 / Why 646 annotated pixels from extract_annotated_pixels()?
 / --> postprocessing in extract_annotated_pixels verstehen und kontrollieren...
 
 (Idee RS: gaussian smoothing zuerst?)
-
 
 
 ======================================
