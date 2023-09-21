@@ -1,8 +1,6 @@
+(scikit resize uses a lot of resources/time; Hinweise Guillaume)
 
-Rohes input image als feature mitgeben
-Mit vgg16 vergleichen und kombinieren...
-
-Interpolation in anderen beispielen (links)
+(Interpolation in anderen beispielen (links))
 
 Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
 
@@ -20,6 +18,8 @@ Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
 ======================================
 
 
+// Rohes input image als feature mitgeben
+// Mit vgg16 vergleichen und kombinieren...
 
 // Wir trainen mit 14x14 features! Nicht nötig, oder gar schlecht ?!
 // --> z.B. labels runter scalen statt features rauf? --> auch schneller

@@ -57,19 +57,25 @@ def extract_vgg16_features(image, layers, show_napari=False):
     '''
     Extracts features from a single image at given layers of the VGG16 model. Returns a numpy array of shape (num_features, W, H).
     '''
-    image = ensure_rgb(image)
     model = Hookmodel(model_name='vgg16')
     all_layers = [key for key in model.module_dict.keys()]
+    # If the layers are given as strings, and they are valid, we can use them directly
     if (all(isinstance(layer, str) and layer in all_layers for layer in layers)):
         pass
+    # If the layers are given as ints, we need to extract the strings first
     elif all(isinstance(layer, int) and 0 <= layer < len(all_layers) for layer in layers):
         layers = [all_layers[layer] for layer in layers]
+    # If the layers are not valid, raise an error
     else:
         raise ValueError(f'The given layers are not valid. Please choose from the following layers (index as int or complete name as string): {all_layers}')
-    # register hooks for the chosen layers in the model
+    # Register hooks for the chosen layers in the model
     model.register_hooks(selected_layers=layers)
-    # Get features for the whole image (pretending the whole image is annotated) without scaling
-    fake_annot = np.ones(image.shape)
+    # Create fake annotations (pretending the whole image is annotated), because conv_paint only returns features for annotated pixels
+    fake_annot = np.ones(image.shape[0:2])
+    # Since so far, conv_paint only handles movies of 2D (= grey-scale) images, we take the mean of the 3 channels if the image is RGB
+    if image.ndim == 3:
+        image = np.mean(image, axis=2)
+    # Get features and targets using the fake annotations covering the full image
     features, targets = get_features_current_layers(
         model=model, image=image, annotations=fake_annot, scalings=[1], use_min_features=False, order=1)
     # Convert the DataFrame to a numpy array
