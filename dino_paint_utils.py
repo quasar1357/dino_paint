@@ -70,11 +70,11 @@ def extract_vgg16_features(image, layers, show_napari=False):
         raise ValueError(f'The given layers are not valid. Please choose from the following layers (index as int or complete name as string): {all_layers}')
     # Register hooks for the chosen layers in the model
     model.register_hooks(selected_layers=layers)
-    # Create fake annotations (pretending the whole image is annotated), because conv_paint only returns features for annotated pixels
-    fake_annot = np.ones(image.shape[0:2])
     # Since so far, conv_paint only handles movies of 2D (= grey-scale) images, we take the mean of the 3 channels if the image is RGB
     if image.ndim == 3:
         image = np.mean(image, axis=2)
+    # Create fake annotations (pretending the whole image is annotated), because conv_paint only returns features for annotated pixels    
+    fake_annot = np.ones(image.shape)
     # Get features and targets using the fake annotations covering the full image
     features, targets = get_features_current_layers(
         model=model, image=image, annotations=fake_annot, scalings=[1], use_min_features=False, order=1)
@@ -197,6 +197,7 @@ def ensure_rgb(image):
     Checks if an image is RGB, and if not, converts it to RGB.
     '''
     if image.ndim == 2:
+        # image_rgb = (np.stack((image,)*3, axis=-1)/np.max(image)*255).astype(np.uint8)
         image_rgb = np.stack((image,)*3, axis=-1)
     else:
         image_rgb = image
@@ -276,7 +277,7 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
 
 ### TESTS USING GROUND TRUTH ###
 
-def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, scales=[1], dinos=['s'], vggs=[None], im_feats=[False], print_avg=False):
+def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, scales=[1], dinos=['s'], vggs=[None], im_feats=[False], print_avg=False, print_max=False):
     '''
     Tests prediction accuracy of a DINOv2 model trained on a given image against a ground truth.
     Tests for different scales, DINOv2 models, VGG16 layers and "image as feature" options.
@@ -327,5 +328,12 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
         avg_scales[s_i] = avg_scale
         if print_avg:
             print(f'Average accuracy for scale {s}: {np.round(100*avg_scale, 2)}%')
-    # Return the specific accuracies and the averages
-    return accuracies, (avg_dinos, avg_vggs, avg_im_feats, avg_scales)
+    # Calculate the maximum accuracy and the corresponding parameters; optionally print them
+    max_acc_idx = np.unravel_index(np.argmax(accuracies), accuracies.shape)
+    max_acc = accuracies[max_acc_idx]
+    if print_max:
+        print(f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached with:\n"+
+            f"dino = {dinos[max_acc_idx[0]]}\nvgg16 = {vggs[max_acc_idx[1]]}\n"+
+            f"image as feature = {im_feats[max_acc_idx[2]]}\nscale = {scales[max_acc_idx[3]]}")
+    # Return the specific accuracies, the averages and the maximum
+    return accuracies, (avg_dinos, avg_vggs, avg_im_feats, avg_scales), (max_acc, max_acc_idx)
