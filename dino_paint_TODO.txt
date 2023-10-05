@@ -1,5 +1,5 @@
 
-Why are accuracies lower than before correcting the rgb/annotation bug?!
+Read: Ilastik, DINO paper
 
 Understand DINOv2; which model/layers (intermediate?) best for sem_seg? -> s. DINOv2 notebook
 
@@ -25,6 +25,8 @@ Andere classifiers, bzw. z.B. leafs reduzieren beim random forest
 
 ======================================
 
+// Why are accuracies lower than before correcting the rgb/annotation bug?!
+// --> later layers in vgg16 are just bad at detecting the cells (not sure why random forest does not just take the first ones in this case...)
 
 // Rohes input image als feature mitgeben
 // Mit vgg16 vergleichen und kombinieren...
