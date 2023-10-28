@@ -22,7 +22,8 @@ def extract_dinov2_features(image, upscale_order=1, dinov2_model='s'):
     models = {'s': 'dinov2_vits14',
               'b': 'dinov2_vitb14',
               'l': 'dinov2_vitl14',
-              'g': 'dinov2_vitg14'}
+              'g': 'dinov2_vitg14',
+              'r': 'dinov2_vitg14_reg'}
     dinov2_name = models[dinov2_model]
     if dinov2_name not in loaded_models:
         loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True)
