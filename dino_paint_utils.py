@@ -23,7 +23,10 @@ def extract_dinov2_features(image, upscale_order=1, dinov2_model='s'):
               'b': 'dinov2_vitb14',
               'l': 'dinov2_vitl14',
               'g': 'dinov2_vitg14',
-              'r': 'dinov2_vitg14_reg'}
+              's_r': 'dinov2_vits14_reg',
+              'b_r': 'dinov2_vitb14_reg',
+              'l_r': 'dinov2_vitl14_reg',
+              'g_r': 'dinov2_vitg14_reg'}
     dinov2_name = models[dinov2_model]
     if dinov2_name not in loaded_models:
         loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True)
@@ -49,7 +52,7 @@ def extract_single_tensor_dinov2_features(image_tensor, model):
     # Convert to numpy array
     features = features.numpy()
     # Remove batch dimension
-    features = features[0,:,:]    
+    features = features[0,:,:] 
     return features
 
 # VGG16 feature extraction (adjusted wrapper)
