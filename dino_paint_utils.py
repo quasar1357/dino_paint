@@ -356,7 +356,7 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     max_acc_idx = np.unravel_index(np.argmax(accuracies), accuracies.shape)
     max_acc = accuracies[max_acc_idx]
     if print_max:
-        best_dino_model = max_acc_idx[0] // len(dinov2_models) + 1
+        best_dino_model = max_acc_idx[0] // len(dinov2_models)
         best_dino_layers = max_acc_idx[0] % len(dinov2_models)
         print(f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached with:\n"+
             f"dino model = {dinov2_models[best_dino_model]}\ndino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
