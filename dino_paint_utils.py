@@ -29,7 +29,7 @@ def extract_dinov2_features(image, upscale_order=1, dinov2_model='s', layers=())
               'g_r': 'dinov2_vitg14_reg'}
     dinov2_name = models[dinov2_model]
     if dinov2_name not in loaded_models:
-        print(f"Loading DINOv2 model {dinov2_name}")
+        # print(f"Loading DINOv2 model {dinov2_name}")
         loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True)
     model = loaded_models[dinov2_name]
     dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
@@ -48,7 +48,7 @@ def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
     image_batch = image_tensor.unsqueeze(0)
     # Extract features
     if layers:
-        print(f"Using DINOv2 layers {layers}")
+        # print(f"Using DINOv2 layers {layers}")
         with torch.no_grad():
             features = model.get_intermediate_layers(image_batch, n = layers, reshape=False)
         # Convert to numpy array
@@ -58,7 +58,7 @@ def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
         features = np.transpose(features, (1, 2, 3, 0))
         features = np.reshape(features, (num_batches, num_patches, num_channels * num_layers))
     else:
-        print("using DINOv2 x_norm_patchtokens")
+        # print("using DINOv2 x_norm_patchtokens")
         with torch.no_grad():
             features_dict = model.forward_features(image_batch)
             features = features_dict['x_norm_patchtokens']
@@ -86,7 +86,7 @@ def extract_vgg16_features(image, layers, show_napari=False):
     else:
         raise ValueError(f'The given layers are not valid. Please choose from the following layers (index as int or complete name as string): {all_layers}')
     # Register hooks for the chosen layers in the model
-    print(f"Using VGG16 layers {layers}")
+    # print(f"Using VGG16 layers {layers}")
     model.register_hooks(selected_layers=layers)
     # Since so far, conv_paint only handles movies of 2D (= grey-scale) images, we take the mean of the 3 channels if the image is RGB
     if image.ndim == 3:
@@ -310,7 +310,7 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
             print(f'Running tests for DINOv2 model {dino}, layers {d_layers}...')
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
             for v_i, vgg in enumerate(vgg16_layer_combos):
-                print(f'Running tests for VGG16 layers {vgg}...')
+                print(f'    Running tests for VGG16 layers {vgg}...')
                 for i_i, im_feat in enumerate(im_feats):
                     for s_i, s in enumerate(scales):
                         # Skip if neither DINOv2 model nor VGG16 layers are specified
@@ -330,6 +330,8 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     avg_vgg16_layer_combos = np.zeros(len(vgg16_layer_combos))
     avg_im_feats = np.zeros(len(im_feats))
     avg_scales = np.zeros(len(scales))
+    if print_avg:
+        print("--- AVERAGES ---\n")
     for d_m_i, dino in enumerate(dinov2_models):
         for d_l_i, d_layers in enumerate(dinov2_layer_combos):   
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
@@ -358,9 +360,12 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     if print_max:
         best_dino_model = max_acc_idx[0] // len(dinov2_models)
         best_dino_layers = max_acc_idx[0] % len(dinov2_models)
-        print(f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached with:\n"+
-            f"dino model = {dinov2_models[best_dino_model]}\ndino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
-            f"vgg16 = {vgg16_layer_combos[max_acc_idx[1]]}\n"+
-            f"image as feature = {im_feats[max_acc_idx[2]]}\nscale = {scales[max_acc_idx[3]]}")
+        print("--- MAXIMUM ---\n"+
+              f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached with:\n"+
+              f"    dino model = {dinov2_models[best_dino_model]}\n"+
+              f"    dino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
+              f"    vgg16 = {vgg16_layer_combos[max_acc_idx[1]]}\n"+
+              f"    image as feature = {im_feats[max_acc_idx[2]]}\n"+
+              f"    scale = {scales[max_acc_idx[3]]}")
     # Return the specific accuracies, the averages and the maximum
     return accuracies, (avg_dinov2_models, avg_vgg16_layer_combos, avg_im_feats, avg_scales), (max_acc, max_acc_idx)
