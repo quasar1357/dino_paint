@@ -30,10 +30,11 @@ def extract_dinov2_features(image, upscale_order=1, dinov2_model='s', layers=())
     dinov2_name = models[dinov2_model]
     if dinov2_name not in loaded_models:
         # print(f"Loading DINOv2 model {dinov2_name}")
-        loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True)
+        loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True, verbose=False)
     model = loaded_models[dinov2_name]
-    dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    model.eval()
     image_rgb = ensure_rgb(image)
+    dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
     image_norm = normalize_np_array(image_rgb, dinov2_mean, dinov2_sd, axis = (0,1))
     image_tensor = ToTensor()(image_norm).float()
     features = extract_single_tensor_dinov2_features(image_tensor, model, layers)
@@ -302,12 +303,12 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     Tests prediction on a given image, or, if no image to predict is specified (=None), on the image used for training itself (selfprediction).
     '''
     total_dinov2_combos = len(dinov2_models) * len(dinov2_layer_combos)
-    shape = (total_dinov2_combos, len(vgg16_layer_combos), len(im_feats), len(scales))
-    accuracies = np.zeros(shape)
+    acc_shape = (total_dinov2_combos, len(vgg16_layer_combos), len(im_feats), len(scales))
+    accuracies = np.zeros(acc_shape)
     for d_m_i, dino in enumerate(dinov2_models):
         for d_l_i, d_layers in enumerate(dinov2_layer_combos):
-            # Linearize the combinations of DINOv2 models and layer selection
             print(f'Running tests for DINOv2 model {dino}, layers {d_layers}...')
+            # Linearize the combinations of DINOv2 models and layer selection
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
             for v_i, vgg in enumerate(vgg16_layer_combos):
                 print(f'    Running tests for VGG16 layers {vgg}...')
@@ -326,22 +327,22 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
                             pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, crop_to_patch=True, scale=s, upscale_order=1, dinov2_model=dino, dinov2_layers=d_layers, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
                         accuracies[d_i, v_i, i_i, s_i] = pred[-1]
     # Calculate averages and optionally print them
-    avg_dinov2_models = np.zeros(total_dinov2_combos)
-    avg_vgg16_layer_combos = np.zeros(len(vgg16_layer_combos))
+    avg_dinos = np.zeros(total_dinov2_combos)
+    avg_vggs = np.zeros(len(vgg16_layer_combos))
     avg_im_feats = np.zeros(len(im_feats))
     avg_scales = np.zeros(len(scales))
     if print_avg:
-        print("--- AVERAGES ---\n")
+        print("\n--- AVERAGES ---")
     for d_m_i, dino in enumerate(dinov2_models):
         for d_l_i, d_layers in enumerate(dinov2_layer_combos):   
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
             avg_dino = np.mean(accuracies[d_i,:,:,:][accuracies[d_i,:,:,:]!=0])
-            avg_dinov2_models[d_i] = avg_dino
+            avg_dinos[d_i] = avg_dino
             if print_avg:
                 print(f'Average accuracy for DINOv2 model {dino}, layers {d_layers}: {np.round(100*avg_dino, 2)}%')
     for v_i, vgg in enumerate(vgg16_layer_combos):
         avg_vgg = np.mean(accuracies[:,v_i,:,:][accuracies[:,v_i,:,:]!=0])
-        avg_vgg16_layer_combos[v_i] = avg_vgg
+        avg_vggs[v_i] = avg_vgg
         if print_avg:
             print(f'Average accuracy for VGG16 layers {vgg}: {np.round(100*avg_vgg, 2)}%')
     for i_i, im_feat in enumerate(im_feats):
@@ -358,9 +359,9 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     max_acc_idx = np.unravel_index(np.argmax(accuracies), accuracies.shape)
     max_acc = accuracies[max_acc_idx]
     if print_max:
-        best_dino_model = max_acc_idx[0] // len(dinov2_models)
-        best_dino_layers = max_acc_idx[0] % len(dinov2_models)
-        print("--- MAXIMUM ---\n"+
+        best_dino_model = max_acc_idx[0] // len(dinov2_layer_combos)
+        best_dino_layers = max_acc_idx[0] % len(dinov2_layer_combos)
+        print("\n--- MAXIMUM ---\n"+
               f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached with:\n"+
               f"    dino model = {dinov2_models[best_dino_model]}\n"+
               f"    dino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
@@ -368,4 +369,4 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
               f"    image as feature = {im_feats[max_acc_idx[2]]}\n"+
               f"    scale = {scales[max_acc_idx[3]]}")
     # Return the specific accuracies, the averages and the maximum
-    return accuracies, (avg_dinov2_models, avg_vgg16_layer_combos, avg_im_feats, avg_scales), (max_acc, max_acc_idx)
+    return accuracies, (avg_dinos, avg_vggs, avg_im_feats, avg_scales), (max_acc, max_acc_idx)
