@@ -110,6 +110,9 @@ def extract_vgg16_features(image, layers, show_napari=False):
 # Combine features
 
 def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False):
+    '''
+    Extract features using DINOv2 and/or VGG16, possibly using different scalings on the input image
+    '''
     # If no scales are given, just extract with unscaled image
     if not scales:
         return extract_feature_space_unscaled(image, dinov2_model=dinov2_model, dinov2_layers= dinov2_layers, upscale_order=upscale_order, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=append_image_as_feature)
