@@ -109,48 +109,55 @@ def extract_vgg16_features(image, layers, show_napari=False):
 
 # Combine features
 
-def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=[1], vgg16_layers=None, append_image_as_feature=False):
+def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False):
+    # If no scales are given, just extract with unscaled image
+    if not scales:
+        return extract_feature_space_unscaled(image, dinov2_model=dinov2_model, dinov2_layers= dinov2_layers, upscale_order=upscale_order, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=append_image_as_feature)
+    # Sample the features extracted for all different scales in a list
+    features_list = []
+    for scale in scales:
+        # print("handling scale", scale)
+        # print("image shape", image.shape)
+        # Scale the image with the scale factor given
+        image_scaled = resize(image, (image.shape[0] * scale, image.shape[1] * scale), mode='edge', order=0, preserve_range=True)
+        # print("image_scaled", image_scaled.shape)
+        features_scaled = extract_feature_space_unscaled(image_scaled, dinov2_model=dinov2_model, dinov2_layers= dinov2_layers, upscale_order=upscale_order, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=append_image_as_feature)
+        # Scale the features back down to image size
+        num_features = features_scaled.shape[0]
+        # print("features_scaled", features_scaled.shape)
+        features_scaled = resize(features_scaled, (num_features, image.shape[0], image.shape[1]), mode='edge', order=0, preserve_range=True)
+        # print("features_rescaled", features_scaled.shape)
+        # Append the features to the features_list
+        features_list.append(features_scaled)
+        # print("features list", len(features_list))
+    # Concatenate all features from different scalings
+    features = np.concatenate(features_list, axis=0)
+    # print("dinov2 features total", features.shape)
+    return features
+
+def extract_feature_space_unscaled(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), vgg16_layers=None, append_image_as_feature=False):
     '''
     Extracts features from the image given the DINOv2 model and/or VGG16 layers. Applies padding for DINOv2 to conform with patch size.
     Additional features with extra padding (option extra_pads) can be concatenated to shift patch pattern (and increase resolution)
     '''
     # Check if dinov2_model and/or vgg16_layers are specified, and use one or both to create the feature space
     if dinov2_model is not None:
-        # Sample the features extracted for all different scales in a list
-        dinov2_features_list = []
-        for scale in scales:
-            # print("handling scale", scale)
-            # print("image shape", image.shape)
-            # Scale the image with the scale factor given
-            image_scaled = resize(image, (image.shape[0] * scale, image.shape[1] * scale), mode='edge', order=0, preserve_range=True)
-            # print("image_scaled", image_scaled.shape)
-            # Pad the scaled image to patch size
-            image_padded = pad_to_patch(image_scaled, "bottom", "right", extra_pad=False, patch_size=(14,14), pad_mode='constant')
+        # Pad the scaled image to patch size
+        image_padded = pad_to_patch(image, "bottom", "right", extra_pad=False, patch_size=(14,14), pad_mode='constant')
+        # Extract features using the scaled and padded image
+        dinov2_features = extract_dinov2_features(image_padded, dinov2_model, dinov2_layers, upscale_order)
+        # Crop the features back to original size of the scaled image
+        dinov2_features = dinov2_features[:,:image.shape[0], :image.shape[1]]
+        # If any extra pads are given, extract DINOv2 on image with those extra_pads added to the left and concatenate features
+        for extra_pad in extra_pads:
+            # Pad the image to patch size using the extra padding provided
+            image_extra_padded = pad_to_patch(image, "bottom", "right", extra_pad=extra_pad, patch_size=(14,14), pad_mode='constant')
             # Extract features using the scaled and padded image
-            dinov2_features_scaled = extract_dinov2_features(image_padded, dinov2_model, dinov2_layers, upscale_order)
-            # Crop the features back to original size of the scaled image
-            dinov2_features_scaled = dinov2_features_scaled[:,:image_scaled.shape[0], :image_scaled.shape[1]]
-            # If any extra pads are given, extract DINOv2 on image with those extra_pads added to the left and concatenate features
-            for extra_pad in extra_pads:
-                # Pad the image to patch size using the extra padding provided
-                image_extra_padded = pad_to_patch(image_scaled, "bottom", "right", extra_pad=extra_pad, patch_size=(14,14), pad_mode='constant')
-                # Extract features using the scaled and padded image
-                features_extra_padded = extract_dinov2_features(image_extra_padded, dinov2_model, dinov2_layers, upscale_order)
-                # Crop the features back to original size of the scaled image (removing the extra padding added)
-                features_extra_padded = features_extra_padded[:,extra_pad:extra_pad+image_scaled.shape[0], extra_pad:extra_pad+image_scaled.shape[1]]
-                # Add the features to the features extracted so far (with the same scale)
-                dinov2_features_scaled = np.concatenate((dinov2_features_scaled, features_extra_padded), axis=0)
-            # Scale the features back down to image size
-            num_features = dinov2_features_scaled.shape[0]
-            # print("dinov2_features_scaled", dinov2_features_scaled.shape)
-            dinov2_features_scaled = resize(dinov2_features_scaled, (num_features, image.shape[0], image.shape[1]), mode='edge', order=0, preserve_range=True)
-            # print("dinov2_features_rescaled", dinov2_features_scaled.shape)
-            # Append the features to the dinov2_features_list
-            dinov2_features_list.append(dinov2_features_scaled)
-            # print("features list", len(dinov2_features_list))
-        # Concatenate all features from different scalings
-        dinov2_features = np.concatenate(dinov2_features_list, axis=0)
-        # print("dinov2 features total", dinov2_features.shape)
+            features_extra_padded = extract_dinov2_features(image_extra_padded, dinov2_model, dinov2_layers, upscale_order)
+            # Crop the features back to original size of the scaled image (removing the extra padding added)
+            features_extra_padded = features_extra_padded[:,extra_pad:extra_pad+image.shape[0], extra_pad:extra_pad+image.shape[1]]
+            # Add the features to the features extracted so far (with the same scale)
+            dinov2_features = np.concatenate((dinov2_features, features_extra_padded), axis=0)
     
     # Extract features with VGG16
     if vgg16_layers is not None:
@@ -187,7 +194,7 @@ def predict_space_to_image(feature_space, random_forest):
 
 ### PUT EVERYTHING TOGETHER ###
 
-def train_dino_forest(image, labels, crop_to_patch=True, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=[1], vgg16_layers=None, append_image_as_feature=False, show_napari=False):
+def train_dino_forest(image, labels, crop_to_patch=True, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a label image, and trains a random forest classifier on the DINOv2 features of the image.
     Returns the random forest, the image and labels used for training (both scaled to DINOv2's patch size) and the DINOv2 feature space.
@@ -206,7 +213,7 @@ def train_dino_forest(image, labels, crop_to_patch=True, dinov2_model='s', dinov
         show_results_napari(image=image, feature_space=feature_space, labels=labels)
     return random_forest, image, labels, feature_space
 
-def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=True, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=[1], vgg16_layers=None, append_image_as_feature=False, show_napari=False):
+def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=True, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a trained random forest classifier, and predicts labels for the image.
     Returns the predicted labels, the image used for prediction (scaled to DINOv2's patch size) and its DINOv2 feature space.
@@ -228,7 +235,7 @@ def predict_dino_forest(image, random_forest, ground_truth=None, crop_to_patch=T
             accuracy = np.sum(ground_truth == predicted_labels) / ground_truth.size    
     return predicted_labels, image, feature_space, accuracy
 
-def selfpredict_dino_forest(image, labels, ground_truth=None, crop_to_patch=True, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=[1], vgg16_layers=None, append_image_as_feature=False, show_napari=False):
+def selfpredict_dino_forest(image, labels, ground_truth=None, crop_to_patch=True, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False, show_napari=False):
     '''
     Takes an image and a label image, and trains a random forest classifier on the DINOv2 features of the image.
     Then uses the trained random forest to predict labels for the image itself.
