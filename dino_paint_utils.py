@@ -109,7 +109,7 @@ def extract_vgg16_features(image, layers, show_napari=False):
 
 # Combine features
 
-def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False):
+def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), vgg16_layers=None, append_image_as_feature=False, scales=()):
     '''
     Extract features using DINOv2 and/or VGG16, possibly using different scalings on the input image
     '''
@@ -160,15 +160,15 @@ def extract_feature_space_unscaled(image, dinov2_model='s', dinov2_layers=(), up
             # Extract features using the scaled and padded image
             features_extra_padded = extract_dinov2_features(image_extra_padded, dinov2_model, dinov2_layers, upscale_order)
             # Crop the features back to original size of the scaled image (removing the extra padding added)
-            features_extra_padded = features_extra_padded[:,extra_pad:extra_pad+image.shape[0], extra_pad:extra_pad+image.shape[1]]
-            # Add the features to the features extracted so far (with the same scale)
+            features_extra_padded = features_extra_padded[:, extra_pad:extra_pad+image.shape[0], extra_pad:extra_pad+image.shape[1]]
+            # Add the features to the features extracted so far
             dinov2_features = np.concatenate((dinov2_features, features_extra_padded), axis=0)
     
     # Extract features with VGG16
     if vgg16_layers is not None:
         vgg16_features = extract_vgg16_features(image, vgg16_layers)
 
-    # Return the correct combination/choice of models given
+    # Use the correct combination/choice of models given
     if dinov2_model is not None and vgg16_layers is not None:
         feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
     elif dinov2_model is not None:
@@ -199,12 +199,12 @@ def predict_space_to_image(feature_space, random_forest):
 
 ### PUT EVERYTHING TOGETHER ###
 
-def train_dino_forest(image, labels, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), scales=(), vgg16_layers=None, append_image_as_feature=False, show_napari=False):
+def train_dino_forest(image, labels, dinov2_model='s', dinov2_layers=(), upscale_order=0, extra_pads=(), vgg16_layers=None, append_image_as_feature=False, scales=(), show_napari=False):
     '''
     Takes an image and a label image, and trains a random forest classifier on the DINOv2 features of the image.
     Returns the random forest, the image and labels used for training (both scaled to DINOv2's patch size) and the DINOv2 feature space.
     '''
-    feature_space = extract_feature_space(image, dinov2_model, dinov2_layers, upscale_order, extra_pads, scales, vgg16_layers, append_image_as_feature)
+    feature_space = extract_feature_space(image, dinov2_model, dinov2_layers, upscale_order, extra_pads, vgg16_layers, append_image_as_feature, scales)
     # Extract annotated pixels and train random forest
     features_annot, targets = extract_annotated_pixels(feature_space, labels, full_annotation=False)
     random_forest = train_classifier(features_annot, targets)
@@ -218,7 +218,7 @@ def predict_dino_forest(image, random_forest, ground_truth=None, dinov2_model='s
     Takes an image and a trained random forest classifier, and predicts labels for the image.
     Returns the predicted labels, the image used for prediction (scaled to DINOv2's patch size) and its DINOv2 feature space.
     '''
-    feature_space = extract_feature_space(image, dinov2_model, dinov2_layers, upscale_order, extra_pads, scales, vgg16_layers, append_image_as_feature)
+    feature_space = extract_feature_space(image, dinov2_model, dinov2_layers, upscale_order, extra_pads, vgg16_layers, append_image_as_feature, scales)
     # Use the interpolated feature space (optionally appended with other features) for prediction
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     # Optionally show everything in Napari
@@ -239,7 +239,7 @@ def selfpredict_dino_forest(image, labels, ground_truth=None, dinov2_model='s', 
     Then uses the trained random forest to predict labels for the image itself.
     Returns the predicted labels, the image and labels used for training (both scaled to DINOv2's patch size) and the DINOv2 feature space.
     '''
-    train = train_dino_forest(image, labels, dinov2_model, dinov2_layers, upscale_order, extra_pads, scales, vgg16_layers, append_image_as_feature, show_napari=False)
+    train = train_dino_forest(image, labels, dinov2_model, dinov2_layers, upscale_order, extra_pads, vgg16_layers, append_image_as_feature, scales, show_napari=False)
     random_forest, image, labels, feature_space = train
     predicted_labels = predict_space_to_image(feature_space, random_forest)
     # Optionally show everything in Napari
@@ -327,7 +327,7 @@ def pad_to_patch(image, vert_pos="center", hor_pos="center", extra_pad=0, patch_
     bot_pad = bot_pad + extra_pad
     left_pad = left_pad + extra_pad
     right_pad = right_pad + extra_pad
-    # Convert back to int
+    # Make sure paddings are ints
     top_pad, bot_pad, left_pad, right_pad = int(top_pad), int(bot_pad), int(left_pad), int(right_pad)
     # Pad the image using the pad sizes as calculated and the mode given as input
     image_padded = np.pad(image, ((top_pad, bot_pad), (left_pad, right_pad)), mode=pad_mode)
@@ -363,9 +363,14 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     Tests for different scales, DINOv2 models, DINOv2 layers, VGG16 layers and "image as feature" options.
     Tests prediction on a given image, or, if no image to predict is specified (=None), on the image used for training itself (selfprediction).
     '''
-    total_dinov2_combos = len(dinov2_models) * len(dinov2_layer_combos)
+    # Some options are held constant and not looped over; they are defined here
+    upscale_order=0
+    extra_pads=()
+    # Prepare matrix for results
+    total_dinov2_combos = len(dinov2_models) * max(1, len(dinov2_layer_combos))
     acc_shape = (total_dinov2_combos, len(vgg16_layer_combos), len(im_feats), len(scale_combos))
     accuracies = np.zeros(acc_shape)
+    # Loop over all possible combinations
     for d_m_i, dino in enumerate(dinov2_models):
         for d_l_i, d_layers in enumerate(dinov2_layer_combos):
             print(f'Running tests for DINOv2 model {dino}, layers {d_layers}...')
@@ -375,18 +380,21 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
                 print(f'    Running tests for VGG16 layers {vgg}...')
                 for i_i, im_feat in enumerate(im_feats):
                     for s_i, s in enumerate(scale_combos):
+                        print(f'        Running tests with{"out"*(1-im_feat)} image as feature and with scale combination {s}...')
                         # Skip if neither DINOv2 model nor VGG16 layers are specified
                         if dino is None and vgg is None:
                             continue
                         # Selfpredict if no image to predict is specified
                         if image_to_pred is None:
-                            pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=0, extra_pads=(), scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                            pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, extra_pads=extra_pads, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
                         # Otherwise predict labels for the given image
                         else:
-                            train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=0, extra_pads=(), scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                            train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, extra_pads=extra_pads, show_napari=False)
                             random_forest = train[0]
-                            pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=0, extra_pads=(), scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                            pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, extra_pads=extra_pads, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
                         accuracies[d_i, v_i, i_i, s_i] = pred[-1]
+    # Approximate the empty values where we have neither a DINOv2 model not VGG16 layers, so we can calculate proper averages (NOT WORKING YET!)
+    # accuracies[0,0,:,:] = np.mean(np.mean(accuracies[0,1:,:,:]), np.mean(accuracies[1:,0,:,:]))
     # Calculate averages and optionally print them
     avg_dinos = np.zeros(total_dinov2_combos)
     avg_vggs = np.zeros(len(vgg16_layer_combos))
