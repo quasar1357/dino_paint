@@ -10,36 +10,10 @@ from torchvision.transforms import ToTensor
 
 ### FEATURE EXTRACTION ###
 
+# Store loaded DINOv2 models in a global dictionary to avoid loading the same model multiple times
+loaded_dinov2_models = {}
+
 # DINOv2 Feature Extraction
-
-# Store loaded models in a global dictionary to avoid loading the same model multiple times
-loaded_models = {}
-
-def extract_dinov2_features(image, dinov2_model='s', layers=(), upscale_order=0):
-    '''
-    Extracts features from a single image using a DINOv2 model. Returns a numpy array of shape (num_patches, num_features).
-    '''
-    models = {'s': 'dinov2_vits14',
-              'b': 'dinov2_vitb14',
-              'l': 'dinov2_vitl14',
-              'g': 'dinov2_vitg14',
-              's_r': 'dinov2_vits14_reg',
-              'b_r': 'dinov2_vitb14_reg',
-              'l_r': 'dinov2_vitl14_reg',
-              'g_r': 'dinov2_vitg14_reg'}
-    dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-    dinov2_name = models[dinov2_model]
-    if dinov2_name not in loaded_models:
-        # print(f"Loading DINOv2 model {dinov2_name}")
-        loaded_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True, verbose=False)
-    model = loaded_models[dinov2_name]
-    model.eval()
-    image_rgb = ensure_rgb(image)
-    image_norm = normalize_np_array(image_rgb, dinov2_mean, dinov2_sd, axis = (0,1))
-    image_tensor = ToTensor()(image_norm).float()
-    features = extract_single_tensor_dinov2_features(image_tensor, model, layers)
-    feature_space = dino_features_to_space(features, image.shape, interpolation_order=upscale_order)
-    return feature_space
 
 def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
     '''
@@ -68,6 +42,55 @@ def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
     # Remove batch dimension
     features = features[0]
     return features
+
+def extract_dinov2_features(image, dinov2_model='s', layers=(), upscale_order=0):
+    '''
+    Extracts features from a single image using a DINOv2 model. Returns a numpy array of shape (num_patches, num_features).
+    '''
+    models = {'s': 'dinov2_vits14',
+              'b': 'dinov2_vitb14',
+              'l': 'dinov2_vitl14',
+              'g': 'dinov2_vitg14',
+              's_r': 'dinov2_vits14_reg',
+              'b_r': 'dinov2_vitb14_reg',
+              'l_r': 'dinov2_vitl14_reg',
+              'g_r': 'dinov2_vitg14_reg'}
+    dinov2_mean, dinov2_sd = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    dinov2_name = models[dinov2_model]
+    if dinov2_name not in loaded_dinov2_models:
+        # print(f"Loading DINOv2 model {dinov2_name}")
+        loaded_dinov2_models[dinov2_name] = torch.hub.load('facebookresearch/dinov2', dinov2_name, pretrained=True, verbose=False)
+    model = loaded_dinov2_models[dinov2_name]
+    model.eval()
+    image_rgb = ensure_rgb(image)
+    image_norm = normalize_np_array(image_rgb, dinov2_mean, dinov2_sd, axis = (0,1))
+    image_tensor = ToTensor()(image_norm).float()
+    features = extract_single_tensor_dinov2_features(image_tensor, model, layers)
+    feature_space = dino_features_to_space(features, image.shape, interpolation_order=upscale_order)
+    return feature_space
+
+def pad_and_extract_dinov2_features(image, dinov2_model='s', layers=(), upscale_order=0, pad_mode='reflect', extra_pads=()):
+    '''
+    Pad an image to the next multiple of patch size, extract DINOv2 features
+    Optionally use (several) extra paddings in order to shift the patch position
+    '''
+    # Pad the scaled image to patch size
+    image_padded = pad_to_patch(image, "bottom", "right", pad_mode=pad_mode, extra_pad=False, patch_size=(14,14))
+    # Extract features using the scaled and padded image
+    dinov2_features = extract_dinov2_features(image_padded, dinov2_model, layers, upscale_order)
+    # Crop the features back to original size of the scaled image
+    dinov2_features = dinov2_features[:,:image.shape[0], :image.shape[1]]
+    # If any extra pads are given, extract DINOv2 on image with those extra_pads added to the left and concatenate features
+    for extra_pad in extra_pads:
+        # Pad the image to patch size using the extra padding provided
+        image_extra_padded = pad_to_patch(image, "bottom", "right", pad_mode=pad_mode, extra_pad=extra_pad, patch_size=(14,14))
+        # Extract features using the scaled and padded image
+        features_extra_padded = extract_dinov2_features(image_extra_padded, dinov2_model, layers, upscale_order)
+        # Crop the features back to original size of the scaled image (removing the extra padding added)
+        features_extra_padded = features_extra_padded[:, extra_pad:extra_pad+image.shape[0], extra_pad:extra_pad+image.shape[1]]
+        # Add the features to the features extracted so far
+        dinov2_features = np.concatenate((dinov2_features, features_extra_padded), axis=0)
+    return dinov2_features
 
 # VGG16 feature extraction (adjusted wrapper)
 
@@ -109,13 +132,13 @@ def extract_vgg16_features(image, layers, show_napari=False):
 
 # Combine features
 
-def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, pad_mode='reflect', extra_pads=(), vgg16_layers=None, append_image_as_feature=False, scales=()):
+def extract_feature_space_multi_scale(image, extraction_func, scales=(), **kwargs):
     '''
-    Extract features using DINOv2 and/or VGG16, possibly using different scalings on the input image
+    Extract features with (possibly) different scalings, using a given extraction function
     '''
     # If no scales are given, just extract with unscaled image
     if not scales:
-        return extract_feature_space_unscaled(image, dinov2_model=dinov2_model, dinov2_layers= dinov2_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=append_image_as_feature)
+        return extraction_func(image, **kwargs)
     # Sample the features extracted for all different scales in a list
     features_list = []
     for scale in scales:
@@ -126,7 +149,7 @@ def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_ord
         else:
             image_scaled = resize(image, (image.shape[0] * scale, image.shape[1] * scale), mode='edge', order=0, preserve_range=True)
         # Extract the features from the scaled image
-        features_scaled = extract_feature_space_unscaled(image_scaled, dinov2_model=dinov2_model, dinov2_layers= dinov2_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=append_image_as_feature)
+        features_scaled = extraction_func(image_scaled, **kwargs)
         # If scale factor is 1, skip the rescaling, since it is not necessary and uses ressources
         if scale == 1:
             features_rescaled = features_scaled
@@ -140,48 +163,36 @@ def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_ord
     features = np.concatenate(features_list, axis=0)
     return features
 
-def extract_feature_space_unscaled(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, pad_mode='reflect', extra_pads=(), vgg16_layers=None, append_image_as_feature=False):
+def extract_feature_space(image, dinov2_model='s', dinov2_layers=(), upscale_order=0, pad_mode='reflect', extra_pads=(), vgg16_layers=None, append_image_as_feature=False, scales=()):
     '''
     Extracts features from the image given the DINOv2 model and/or VGG16 layers. Applies padding for DINOv2 to conform with patch size.
     Additional features with extra padding (option extra_pads) can be concatenated to shift patch pattern (and increase resolution).
     '''
-    # Check if dinov2_model and/or vgg16_layers are specified, and use one or both to create the feature space
+    features_list = []
+    # Extract features with DINOv2
     if dinov2_model is not None:
-        # Pad the scaled image to patch size
-        image_padded = pad_to_patch(image, "bottom", "right", pad_mode=pad_mode, extra_pad=False, patch_size=(14,14))
-        # Extract features using the scaled and padded image
-        dinov2_features = extract_dinov2_features(image_padded, dinov2_model, dinov2_layers, upscale_order)
-        # Crop the features back to original size of the scaled image
-        dinov2_features = dinov2_features[:,:image.shape[0], :image.shape[1]]
-        # If any extra pads are given, extract DINOv2 on image with those extra_pads added to the left and concatenate features
-        for extra_pad in extra_pads:
-            # Pad the image to patch size using the extra padding provided
-            image_extra_padded = pad_to_patch(image, "bottom", "right", pad_mode=pad_mode, extra_pad=extra_pad, patch_size=(14,14))
-            # Extract features using the scaled and padded image
-            features_extra_padded = extract_dinov2_features(image_extra_padded, dinov2_model, dinov2_layers, upscale_order)
-            # Crop the features back to original size of the scaled image (removing the extra padding added)
-            features_extra_padded = features_extra_padded[:, extra_pad:extra_pad+image.shape[0], extra_pad:extra_pad+image.shape[1]]
-            # Add the features to the features extracted so far
-            dinov2_features = np.concatenate((dinov2_features, features_extra_padded), axis=0)
-    
+        dinov2_scales = scales[0] if scales else scales
+        dinov2_features = extract_feature_space_multi_scale(image, pad_and_extract_dinov2_features, dinov2_scales, dinov2_model=dinov2_model, layers=dinov2_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads)
+        features_list.append(dinov2_features)
+
     # Extract features with VGG16
     if vgg16_layers is not None:
-        vgg16_features = extract_vgg16_features(image, vgg16_layers)
+        vgg16_scales = scales[1] if scales else scales
+        vgg16_features = extract_feature_space_multi_scale(image, extract_vgg16_features, vgg16_scales, layers=vgg16_layers)
+        features_list.append(vgg16_features)
 
-    # Use the correct combination/choice of models given
-    if dinov2_model is not None and vgg16_layers is not None:
-        feature_space = np.concatenate((dinov2_features, vgg16_features), axis=0)
-    elif dinov2_model is not None:
-        feature_space = dinov2_features
-    elif vgg16_layers is not None:
-        feature_space = vgg16_features
-    else:
-        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
-    # Optionally append the image itself as feature (3 channels, rgb)
+    # Optionally use the image itself as feature (3 channels, rgb)
     if append_image_as_feature:
         image_as_feature = ensure_rgb(image)
         image_as_feature = image_as_feature.transpose(2,0,1)
-        feature_space = np.concatenate((image_as_feature, feature_space), axis=0)
+        features_list.append(image_as_feature)
+
+    # Use the combination/choice of features given
+    if dinov2_model is None and vgg16_layers is None and image_as_feature is None:
+        raise ValueError('Please specify a DINOv2 model and/or VGG16 layers to extract features from')
+    else:
+        feature_space = np.concatenate(features_list, axis=0)
+        
     return feature_space
 
 ### PREDICTION ###
@@ -361,7 +372,7 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
 
 ### TESTS USING GROUND TRUTH ###
 
-def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, scale_combos=((1,),), dinov2_models=('s',), dinov2_layer_combos=(), vgg16_layer_combos=(None,), im_feats=(False,), print_avg=False, print_max=False):
+def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, scale_combos=((),), dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), print_avg=False, print_max=False):
     '''
     Tests prediction accuracy of a DINOv2 model and/or VGG16 model trained on a given image against a ground truth
     Tests for different scales, DINOv2 models, DINOv2 layers, VGG16 layers and "image as feature" options.
@@ -371,9 +382,10 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     upscale_order=0
     pad_mode='reflect'
     extra_pads=()
+    im_feat=True
     # Prepare matrix for results
     total_dinov2_combos = len(dinov2_models) * len(dinov2_layer_combos)
-    acc_shape = (total_dinov2_combos, len(vgg16_layer_combos), len(im_feats), len(scale_combos))
+    acc_shape = (total_dinov2_combos, len(vgg16_layer_combos), len(scale_combos))
     # Prepare matrix for accuracies with all parameter combinations; use 0.5 as default, since this is the expectation of accuracy with 2 labels
     accuracies = np.full(acc_shape, 0.0)
     # Loop over all possible combinations
@@ -384,48 +396,37 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
             for v_i, vgg in enumerate(vgg16_layer_combos):
                 print(f'    Running tests for VGG16 layers {vgg}...')
-                for i_i, im_feat in enumerate(im_feats):
-                    for s_i, s in enumerate(scale_combos):
-                        print(f'        Running tests with{"out"*(1-im_feat)} image as feature and with scale combination {s}...')
-                        # Skip if neither DINOv2 model nor VGG16 layers are specified
-                        if dino is None and vgg is None:
-                            # accuracies[d_i, v_i, i_i, s_i] = np.nan
-                            continue
-                        # Selfpredict if no image to predict is specified
-                        if image_to_pred is None:
-                            pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
-                        # Otherwise predict labels for the given image
-                        else:
-                            train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, vgg16_layers=vgg, append_image_as_feature=im_feat, scales=s, show_napari=False)
-                            random_forest = train[0]
-                            pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
-                        accuracies[d_i, v_i, i_i, s_i] = pred[-1]
+                for s_i, s in enumerate(scale_combos):
+                    print(f'        Running tests with scale combination {s}...')
+                    # Selfpredict if no image to predict is specified
+                    if image_to_pred is None:
+                        pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                    # Otherwise predict labels for the given image
+                    else:
+                        train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, vgg16_layers=vgg, append_image_as_feature=im_feat, scales=s, show_napari=False)
+                        random_forest = train[0]
+                        pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=s, vgg16_layers=vgg, append_image_as_feature=im_feat, show_napari=False)
+                    accuracies[d_i, v_i, s_i] = pred[-1]
     # Calculate averages and optionally print them
     avg_dinos = np.zeros(total_dinov2_combos)
     avg_vggs = np.zeros(len(vgg16_layer_combos))
-    avg_im_feats = np.zeros(len(im_feats))
     avg_scales = np.zeros(len(scale_combos))
     if print_avg:
         print("\n--- AVERAGES ---")
     for d_m_i, dino in enumerate(dinov2_models):
         for d_l_i, d_layers in enumerate(dinov2_layer_combos):   
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
-            avg_dino = np.mean(accuracies[d_i,:,:,:][accuracies[d_i,:,:,:]!=0])
+            avg_dino = np.mean(accuracies[d_i,:,:][accuracies[d_i,:,:]!=0])
             avg_dinos[d_i] = avg_dino
             if print_avg:
                 print(f'Average accuracy for DINOv2 model {dino}, layers {d_layers}: {np.round(100*avg_dino, 2)}%')
     for v_i, vgg in enumerate(vgg16_layer_combos):
-        avg_vgg = np.mean(accuracies[:,v_i,:,:][accuracies[:,v_i,:,:]!=0])
+        avg_vgg = np.mean(accuracies[:,v_i,:][accuracies[:,v_i,:]!=0])
         avg_vggs[v_i] = avg_vgg
         if print_avg:
             print(f'Average accuracy for VGG16 layers {vgg}: {np.round(100*avg_vgg, 2)}%')
-    for i_i, im_feat in enumerate(im_feats):
-        avg_im_feat = np.mean(accuracies[:,:,i_i,:][accuracies[:,:,i_i,:]!=0])
-        avg_im_feats[i_i] = avg_im_feat
-        if print_avg:
-            print(f'Average accuracy for image as feature {im_feat}: {np.round(100*avg_im_feat, 2)}%')
     for s_i, s in enumerate(scale_combos):
-        avg_scale = np.mean(accuracies[:,:,:,s_i][accuracies[:,:,:,s_i]!=0])
+        avg_scale = np.mean(accuracies[:,:,s_i][accuracies[:,:,s_i]!=0])
         avg_scales[s_i] = avg_scale
         if print_avg:
             print(f'Average accuracy for scale {s}: {np.round(100*avg_scale, 2)}%')
@@ -440,7 +441,6 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
               f"    dino model = {dinov2_models[best_dino_model]}\n"+
               f"    dino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
               f"    vgg16 = {vgg16_layer_combos[max_acc_idx[1]]}\n"+
-              f"    image as feature = {im_feats[max_acc_idx[2]]}\n"+
-              f"    scale = {scale_combos[max_acc_idx[3]]}")
+              f"    scale = {scale_combos[max_acc_idx[2]]}")
     # Return the specific accuracies, the averages and the maximum
-    return accuracies, (avg_dinos, avg_vggs, avg_im_feats, avg_scales), (max_acc, max_acc_idx)
+    return accuracies, (avg_dinos, avg_vggs, avg_scales), (max_acc, max_acc_idx)
