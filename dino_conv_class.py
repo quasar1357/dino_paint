@@ -1,7 +1,4 @@
 
-
-
-
 set_options()
 
 print_options()
