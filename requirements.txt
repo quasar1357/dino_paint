@@ -1,4 +1,4 @@
-python==3.9
+python==3.94
 ipykernel
 napari[all]
 git+https://github.com/guiwitz/napari-convpaint.git
