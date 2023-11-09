@@ -27,9 +27,7 @@ def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
         with torch.no_grad():
             features = model.get_intermediate_layers(image_batch, n = layers, reshape=False)
         # Convert to numpy array
-        print(f"features: {features}")
-        features = np.array(features)
-        print(f"features: {features}")
+        features = features.numpy()
         # Concatenate the channels of the intermediate layers (initially split in the first dimension) in the last dimension
         num_layers, num_batches, num_patches, num_channels = features.shape
         features = np.transpose(features, (1, 2, 3, 0))
@@ -40,7 +38,7 @@ def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
             features_dict = model.forward_features(image_batch)
             features = features_dict['x_norm_patchtokens']
         # Convert to numpy array
-        features = np.array(features)
+        features = features.numpy()
     # Remove batch dimension
     features = features[0]
     return features
