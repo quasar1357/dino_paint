@@ -1,5 +1,6 @@
 napari[all]
 matplotlib
+git+https://github.com/quasar1357/dino_paint.git
 git+https://github.com/guiwitz/napari-convpaint.git
 --extra-index-url https://download.pytorch.org/whl/cu117
 torch>=2.0.0
