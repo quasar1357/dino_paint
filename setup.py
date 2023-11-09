@@ -6,5 +6,5 @@ setup(name='dinopaint',
     author='Roman Schwob',
     author_email='roman.schwob@students.unibe.ch',
     license='GNU GPLv3',
-    packages=['dino_paint_utils.py'],
+    packages=['dino_paint_utils'],
     zip_safe=False)
