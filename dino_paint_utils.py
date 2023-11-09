@@ -26,6 +26,7 @@ def extract_single_tensor_dinov2_features(image_tensor, model, layers=()):
         # print(f"Using DINOv2 layers {layers}")
         with torch.no_grad():
             features = model.get_intermediate_layers(image_batch, n = layers, reshape=False)
+            print(f"features: {features}")
         # Convert to numpy array
         features = np.array(features)
         # Concatenate the channels of the intermediate layers (initially split in the first dimension) in the last dimension
