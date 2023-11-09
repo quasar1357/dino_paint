@@ -7,5 +7,4 @@ setup(name='dino_paint',
     author_email='roman.schwob@students.unibe.ch',
     license='GNU GPLv3',
     packages=['package'],
-    scripts=['bin/test.py'],
     zip_safe=False)
