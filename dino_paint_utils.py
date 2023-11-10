@@ -469,8 +469,10 @@ def summarize_results(accuracies, ex_times, dinov2_models=('s',), dinov2_layer_c
         np.save(f"execution_times_{time_stamp}.npy", ex_times)
         with open(f"summary_{time_stamp}.txt", "w") as out_text:
             out_text.write(str(max_acc_string) + "\n" +
-                        "\n".join([f"{key}: {value}" for key, value in avg_accs.items()]) + "\n"  +
-                        "\n".join([f"{key}: {value}" for key, value in avg_time.items()]))
+                           "ACCURACIES:\n" +
+                           "\n".join([f"{key}: {value}" for key, value in avg_accs.items()]) + "\n"  +
+                           "TIMES (SECONDS):\n" +
+                           "\n".join([f"{key}: {value}" for key, value in avg_time.items()]))
 
     # Return the specific accuracies and times, the averages and information about the model with maximum accuracy
     return accuracies, avg_accs, (max_acc, max_acc_idx, max_acc_string), ex_times, avg_time
