@@ -7,6 +7,7 @@ import numpy as np
 from skimage.transform import resize
 import torch
 from torchvision.transforms import ToTensor
+import datetime
 
 ### FEATURE EXTRACTION ###
 
@@ -372,7 +373,7 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
 
 ### TESTS USING GROUND TRUTH ###
 
-def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_max=False):
+def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_best=False, write_files=False):
     '''
     Tests prediction accuracy of a DINOv2 model and/or VGG16 model trained on a given image against a ground truth
     Tests for different scales, DINOv2 models, DINOv2 layers, VGG16 layers and "image as feature" options.
@@ -414,43 +415,62 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
                     accuracies[d_i, v_i, s_i] = pred[-1]
                     # Execution time is start time - current time
                     ex_times[d_i, v_i, s_i] = time() - start
-    
+    # Summarize and return the results
+    return summarize_results(accuracies, ex_times, dinov2_models=dinov2_models, dinov2_layer_combos=dinov2_layer_combos, vgg16_layer_combos=vgg16_layer_combos, scale_combos=scale_combos, print_avg=print_avg, print_best=print_best, write_files=write_files)
+
+def summarize_results(accuracies, ex_times, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_best=False, write_files=False):
     # Calculate averages and optionally print them
-    avg_dinos = np.zeros(total_dinov2_combos)
-    avg_vggs = np.zeros(len(vgg16_layer_combos))
-    avg_scales = np.zeros(len(scale_combos))
+    avg_accs = {}
+    avg_time = {}
     if print_avg:
         print("\n--- AVERAGES ---")
     for d_m_i, dino in enumerate(dinov2_models):
         for d_l_i, d_layers in enumerate(dinov2_layer_combos):   
             d_i = len(dinov2_layer_combos) * d_m_i + d_l_i
-            avg_dino = np.mean(accuracies[d_i,:,:][accuracies[d_i,:,:]!=0])
-            avg_dinos[d_i] = avg_dino
+            avg_dino = np.mean(accuracies[d_i,:,:])
+            avg_dino_time = np.mean(ex_times[d_i,:,:])
+            avg_accs[f"DINOv2 {dino} {d_layers}"] = avg_dino
+            avg_time[f"DINOv2 {dino} {d_layers}"] = avg_dino_time
             if print_avg:
                 print(f'Average accuracy for DINOv2 model {dino}, layers {d_layers}: {np.round(100*avg_dino, 2)}%')
     for v_i, vgg in enumerate(vgg16_layer_combos):
-        avg_vgg = np.mean(accuracies[:,v_i,:][accuracies[:,v_i,:]!=0])
-        avg_vggs[v_i] = avg_vgg
+        avg_vgg = np.mean(accuracies[:,v_i,:])
+        avg_vgg_time = np.mean(ex_times[:,v_i,:])
+        avg_accs[f"VGG16 {vgg}"] = avg_vgg
+        avg_time[f"VGG16 {vgg}"] = avg_vgg_time
         if print_avg:
             print(f'Average accuracy for VGG16 layers {vgg}: {np.round(100*avg_vgg, 2)}%')
     for s_i, s in enumerate(scale_combos):
-        avg_scale = np.mean(accuracies[:,:,s_i][accuracies[:,:,s_i]!=0])
-        avg_scales[s_i] = avg_scale
+        avg_scale = np.mean(accuracies[:,:,s_i])
+        avg_scale_time = np.mean(ex_times[:,:,s_i])
+        avg_accs[f"Scales {s}"] = avg_scale
+        avg_time[f"Scales {s}"] = avg_scale_time
         if print_avg:
             print(f'Average accuracy for scale {s}: {np.round(100*avg_scale, 2)}%')
     
     # Calculate the maximum accuracy and the corresponding parameters; optionally print them
     max_acc_idx = np.unravel_index(np.argmax(accuracies), accuracies.shape)
     max_acc = accuracies[max_acc_idx]
-    if print_max:
-        best_dino_model = max_acc_idx[0] // len(dinov2_layer_combos)
-        best_dino_layers = max_acc_idx[0] % len(dinov2_layer_combos)
-        print("\n--- MAXIMUM ---\n"+
-              f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached with:\n"+
-              f"    dino model = {dinov2_models[best_dino_model]}\n"+
-              f"    dino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
-              f"    vgg16 = {vgg16_layer_combos[max_acc_idx[1]]}\n"+
-              f"    scale = {scale_combos[max_acc_idx[2]]}")
-    
-    # Return the specific accuracies, the averages and the maximum
-    return accuracies, (avg_dinos, avg_vggs, avg_scales), (max_acc, max_acc_idx), ex_times
+    time_for_max_acc = ex_times[max_acc_idx]
+    best_dino_model = max_acc_idx[0] // len(dinov2_layer_combos)
+    best_dino_layers = max_acc_idx[0] % len(dinov2_layer_combos)    
+    max_acc_string = (f"The maximum accuracy {np.round(100*max_acc, 2)}% is reached in {np.round(100*time_for_max_acc, 2)} seconds with:\n"+
+                      f"    dino model = {dinov2_models[best_dino_model]}\n"+
+                      f"    dino layers = {dinov2_layer_combos[best_dino_layers]}\n"+
+                      f"    vgg16 = {vgg16_layer_combos[max_acc_idx[1]]}\n"+
+                      f"    scales = {scale_combos[max_acc_idx[2]]}")
+    if print_best:
+        print("\n--- MAXIMUM ACCURACY ---\n" + max_acc_string)
+
+    # Optionally save the accuracies, execution times and a summary to files
+    if write_files:
+        time_stamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+        np.save(f"accuracies_{time_stamp}.npy", accs)
+        np.save(f"execution_times_{time_stamp}.npy", ex_times)
+        with open(f"summary_{time_stamp}.txt", "w") as out_text:
+            out_text.write(str(max_acc[2]) + "\n" +
+                        "\n".join([f"{key}: {value}" for key, value in avg_accs.items()]) + "\n"  +
+                        "\n".join([f"{key}: {value}" for key, value in avg_time.items()]))
+
+    # Return the specific accuracies and times, the averages and information about the model with maximum accuracy
+    return accuracies, avg_accs, (max_acc, max_acc_idx, max_acc_string), ex_times, avg_time
