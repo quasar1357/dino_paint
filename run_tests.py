@@ -4,7 +4,6 @@ import skimage
 from dino_paint_utils import test_dino_forest
 import PIL
 import urllib
-import datetime
 
 def load_url_to_array(url, from_github=False):
     return np.array(PIL.Image.open(urllib.request.urlopen(['', 'https://github.com/quasar1357/dino_paint/raw/main/images_and_labels/'][from_github] + url)))

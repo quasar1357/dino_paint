@@ -465,10 +465,10 @@ def summarize_results(accuracies, ex_times, dinov2_models=('s',), dinov2_layer_c
     # Optionally save the accuracies, execution times and a summary to files
     if write_files:
         time_stamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
-        np.save(f"accuracies_{time_stamp}.npy", accs)
+        np.save(f"accuracies_{time_stamp}.npy", accuracies)
         np.save(f"execution_times_{time_stamp}.npy", ex_times)
         with open(f"summary_{time_stamp}.txt", "w") as out_text:
-            out_text.write(str(max_acc[2]) + "\n" +
+            out_text.write(str(max_acc_string) + "\n" +
                         "\n".join([f"{key}: {value}" for key, value in avg_accs.items()]) + "\n"  +
                         "\n".join([f"{key}: {value}" for key, value in avg_time.items()]))
 
