@@ -39,4 +39,4 @@ scale_combos = [{"DINOv2": (), "VGG16": ()},
 # Run test
 test = test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred,
                         dinov2_models=dino_models, dinov2_layer_combos=dino_layer_combos, vgg16_layer_combos=vgg_layer_combos, scale_combos=scale_combos,
-                        print_avg=True, print_best=False, write_files=True)
+                        print_avg=False, print_best=False, write_files=True)
