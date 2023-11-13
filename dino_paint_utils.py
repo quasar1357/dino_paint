@@ -4,10 +4,12 @@ from napari_convpaint.conv_paint_utils import (train_classifier,
                                                Hookmodel,
                                                get_features_current_layers)
 import numpy as np
+import pandas as pd
 from skimage.transform import resize
 import torch
 from torchvision.transforms import ToTensor
-import datetime
+from time import time
+from datetime import datetime
 
 ### FEATURE EXTRACTION ###
 
@@ -109,7 +111,7 @@ def extract_vgg16_features(image, layers, show_napari=False):
         layers = [all_layers[layer] for layer in layers]
     # If the layers are not valid, raise an error
     else:
-        raise ValueError(f'The given layers are not valid. Please choose from the following layers (index as int or complete name as string): {all_layers}')
+        raise ValueError(f'The given layers ({layers}) are not valid. Please choose from the following layers (index as int or complete name as string): {all_layers}')
     # Register hooks for the chosen layers in the model
     # print(f"Using VGG16 layers {layers}")
     model.register_hooks(selected_layers=layers)
@@ -373,13 +375,59 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
 
 ### TESTS USING GROUND TRUTH ###
 
-def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_best=False, write_files=False):
+def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), write_csv=False):
     '''
-    Tests prediction accuracy of a DINOv2 model and/or VGG16 model trained on a given image against a ground truth
-    Tests for different scales, DINOv2 models, DINOv2 layers, VGG16 layers and "image as feature" options.
-    Tests prediction on a given image, or, if no image to predict is specified (=None), on the image used for training itself (selfprediction).
+    Tests prediction accuracy of a DINOv2 model and/or VGG16 model trained on a given image against a ground truth.
+    Tests for different scales, DINOv2 models, DINOv2 layers and VGG16 layers, using the image as feature option as baseline for accuracy.
+    Tests prediction on a given image, or, if no image to predict is specified (= None), on the image used for training itself (selfprediction).
     '''
-    from time import time
+    # Some options are held constant and not looped over; they are defined here
+    upscale_order=0
+    pad_mode='reflect'
+    extra_pads=()
+    im_feat=True
+    # Prepare matrice for accuracies and execution times with all parameter combinations; use 0.5 as default, since this is the expectation of accuracy with 2 labels
+    df = pd.DataFrame(columns=['DINOv2 Model', 'DINOv2 Layers', 'DINOv2 Scales', 'VGG16 Layers', 'VGG16 Scales', 'Accuracy', 'Execution Time'])
+    # Loop over all possible combinations
+    for dino in dinov2_models:
+        for d_layers in dinov2_layer_combos:
+            d_layers_name = "x_norm_patchtokens" if not d_layers else d_layers
+            print(f'Running tests for DINOv2 model {dino}, layers {d_layers}...')
+            for vgg16_layers in vgg16_layer_combos:
+                print(f'    Running tests for VGG16 layers {vgg16_layers}...')
+                for scale_combo in scale_combos:
+                    print(f'        Running tests with scale combination {scale_combo}...')
+                    # get starting time
+                    start = time()
+                    # Selfpredict if no image to predict is specified
+                    if image_to_pred is None:
+                        pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
+                    # Otherwise predict labels for the given image
+                    else:
+                        train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, scales=scale_combo, show_napari=False)
+                        random_forest = train[0]
+                        pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
+                    # Add the results to the DataFrame
+                    new_row = pd.DataFrame({'DINOv2 Model': str(dino),
+                                            'DINOv2 Layers': str(d_layers_name),
+                                            'DINOv2 Scales': str(scale_combo["DINOv2"]),
+                                            'VGG16 Layers': str(vgg16_layers),
+                                            'VGG16 Scales': str(scale_combo["VGG16"]),
+                                            'Accuracy': pred[-1],
+                                            'Execution Time': time() - start}, index = [0])
+                    df = pd.concat([df, new_row], ignore_index=True)
+    # Optionally save the DataFrame to a csv file
+    if write_csv:
+        time_stamp = datetime.now().strftime("%y%m%d%H%M%S")
+        df.to_csv(f'accuracies_{time_stamp}.csv', index=False)
+    return df
+
+def test_dino_forest_to_matrix(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_best=False, write_files=False):
+    '''
+    Tests prediction accuracy of a DINOv2 model and/or VGG16 model trained on a given image against a ground truth.
+    Tests for different scales, DINOv2 models, DINOv2 layers and VGG16 layers, using the image as feature option as baseline for accuracy.
+    Tests prediction on a given image, or, if no image to predict is specified (= None), on the image used for training itself (selfprediction).
+    '''
     # Some options are held constant and not looped over; they are defined here
     upscale_order=0
     pad_mode='reflect'
@@ -464,7 +512,7 @@ def summarize_results(accuracies, ex_times, dinov2_models=('s',), dinov2_layer_c
 
     # Optionally save the accuracies, execution times and a summary to files
     if write_files:
-        time_stamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+        time_stamp = datetime.now().strftime("%y%m%d%H%M%S")
         np.save(f"accuracies_{time_stamp}.npy", accuracies)
         np.save(f"execution_times_{time_stamp}.npy", ex_times)
         with open(f"summary_{time_stamp}.txt", "w") as out_text:
