@@ -387,10 +387,13 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     extra_pads=()
     im_feat=True
     # Prepare matrice for accuracies and execution times with all parameter combinations; use 0.5 as default, since this is the expectation of accuracy with 2 labels
-    df = pd.DataFrame(columns=['DINOv2 Model', 'DINOv2 Layers', 'DINOv2 Scales', 'VGG16 Layers', 'VGG16 Scales', 'Accuracy', 'Execution Time'])
+    df = pd.DataFrame(columns=['Image', 'Annotated', 'DINOv2 Model', 'DINOv2 Layers', 'DINOv2 Scales', 'VGG16 Layers', 'VGG16 Scales', 'Accuracy', 'Execution Time'])
+    annotated = np.sum(labels_to_train > 0) / labels_to_train.size
     # Loop over all possible combinations
     for dino in dinov2_models:
-        for d_layers in dinov2_layer_combos:
+        # Do not loop over DINOv2 layers if the DINOv2 model is not specified
+        dinov2_layers_to_loop = ((),) if dino is None else dinov2_layer_combos
+        for d_layers in dinov2_layers_to_loop:
             d_layers_name = "x_norm_patchtokens" if not d_layers else d_layers
             print(f'Running tests for DINOv2 model {dino}, layers {d_layers}...')
             for vgg16_layers in vgg16_layer_combos:
@@ -408,7 +411,9 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
                         random_forest = train[0]
                         pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
                     # Add the results to the DataFrame
-                    new_row = pd.DataFrame({'DINOv2 Model': str(dino),
+                    new_row = pd.DataFrame({'Image': str("Test_Image"),
+                                            'Annotated': str(annotated),
+                                            'DINOv2 Model': str(dino),
                                             'DINOv2 Layers': str(d_layers_name),
                                             'DINOv2 Scales': str(scale_combo["DINOv2"]),
                                             'VGG16 Layers': str(vgg16_layers),
@@ -464,9 +469,9 @@ def test_dino_forest_to_matrix(image_to_train, labels_to_train, ground_truth, im
                     # Execution time is start time - current time
                     ex_times[d_i, v_i, s_i] = time() - start
     # Summarize and return the results
-    return summarize_results(accuracies, ex_times, dinov2_models=dinov2_models, dinov2_layer_combos=dinov2_layer_combos, vgg16_layer_combos=vgg16_layer_combos, scale_combos=scale_combos, print_avg=print_avg, print_best=print_best, write_files=write_files)
+    return summarize_results_matrix(accuracies, ex_times, dinov2_models=dinov2_models, dinov2_layer_combos=dinov2_layer_combos, vgg16_layer_combos=vgg16_layer_combos, scale_combos=scale_combos, print_avg=print_avg, print_best=print_best, write_files=write_files)
 
-def summarize_results(accuracies, ex_times, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_best=False, write_files=False):
+def summarize_results_matrix(accuracies, ex_times, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), print_avg=False, print_best=False, write_files=False):
     # Calculate averages and optionally print them
     avg_accs = {}
     avg_time = {}
