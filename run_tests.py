@@ -10,8 +10,8 @@ def load_url_to_array(url, from_github=False):
 # Load/define image
 image_to_train = skimage.data.astronaut()#[200:300,250:400]
 labels_to_train = load_url_to_array('astro_labels.tif', True)#[200:300,250:400]
-image_to_pred = skimage.data.camera()
-ground_truth = load_url_to_array('cam_ground_truth.tif', True)#[200:300,250:400]
+image_to_pred = None #skimage.data.camera()
+ground_truth = load_url_to_array('astro_ground_truth.tif', True)#[200:300,250:400]
 
 # Create possible combinations of DINOv2 and VGG16 layers and scales
 last_dino_layers = [8,9,10,11]
@@ -28,25 +28,27 @@ chosen_scales = all_scales[:2]
 # consecutive_scales = [{"DINOv2": chosen_scales[:d], "VGG16": chosen_scales[:v]} for d in range(1, 1 + len(chosen_scales)) for v in range(1, 1 + len(chosen_scales))]
 
 # Choose what to use
-dino_models = [None,
-               's']
-dino_layer_combos = [(),
-                     last_dino_layers]
-dino_scale_combos = [(),
-                     (chosen_scales)]
-vgg_layer_combos = [None,
-                    [0],
-                    all_vggs]
-                    # [0, 2, 7], [26,28]]
-vgg_scale_combos = [(),
-                    (chosen_scales)]
+dino_models = [None] #,
+               #'s']
+dino_layer_combos = [()] #,
+                     #last_dino_layers]
+dino_scale_combos = [()] #,
+                     #(chosen_scales)]
+vgg_layer_combos = [None] + single_vggs[::3]
+                    #None],
+                    #[0],
+                    #all_vggs]
+                    #[0, 2, 7], [26,28]]
+vgg_scale_combos = [()] #,
+                    #(chosen_scales)]
 
 # scale_combos = [{"DINOv2": (), "VGG16": ()},
 #                 {"DINOv2": (), "VGG16": chosen_scales},
 #                 {"DINOv2": chosen_scales, "VGG16": ()},
 #                 {"DINOv2": chosen_scales, "VGG16": chosen_scales}]
 
-# print(f"dinov2_models={dino_models}\ndinov2_layer_combos={dino_layer_combos}\nvgg16_layer_combos={vgg_layer_combos}\nscale_combos={scale_combos}")
+# Check if the right parameters are tested for (can use before running long tests)
+# print(f"dinov2_models={dino_models}\ndinov2_layer_combos={dino_layer_combos}\ndinov2_scale_combos={dino_scale_combos}\nvgg16_layer_combos={vgg_layer_combos}\ncgg16_scale_combos={vgg_scale_combos}")
 # exit()
 
 # Run test
