@@ -375,7 +375,7 @@ def show_results_napari(image=None, feature_space=None, labels=None, predicted_l
 
 ### TESTS USING GROUND TRUTH ###
 
-def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), vgg16_layer_combos=(None,), scale_combos=((),), write_csv=False):
+def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pred=None, dinov2_models=('s',), dinov2_layer_combos=((),), dinov2_scale_combos=((),), vgg16_layer_combos=(None,), vgg16_scale_combos=((),), write_csv=False):
     '''
     Tests prediction accuracy of a DINOv2 model and/or VGG16 model trained on a given image against a ground truth.
     Tests for different scales, DINOv2 models, DINOv2 layers and VGG16 layers, using the image as feature option as baseline for accuracy.
@@ -393,34 +393,38 @@ def test_dino_forest(image_to_train, labels_to_train, ground_truth, image_to_pre
     for dino in dinov2_models:
         # Do not loop over DINOv2 layers if the DINOv2 model is not specified
         dinov2_layers_to_loop = ((),) if dino is None else dinov2_layer_combos
+        dinov2_scales_to_loop = ((),) if dino is None else dinov2_scale_combos
         for d_layers in dinov2_layers_to_loop:
             d_layers_name = "x_norm_patchtokens" if not d_layers else d_layers
-            print(f'Running tests for DINOv2 model {dino}, layers {d_layers}...')
-            for vgg16_layers in vgg16_layer_combos:
-                print(f'    Running tests for VGG16 layers {vgg16_layers}...')
-                for scale_combo in scale_combos:
-                    print(f'        Running tests with scale combination {scale_combo}...')
-                    # get starting time
-                    start = time()
-                    # Selfpredict if no image to predict is specified
-                    if image_to_pred is None:
-                        pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
-                    # Otherwise predict labels for the given image
-                    else:
-                        train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, scales=scale_combo, show_napari=False)
-                        random_forest = train[0]
-                        pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
-                    # Add the results to the DataFrame
-                    new_row = pd.DataFrame({'Image': str("Test_Image"),
-                                            'Annotated': str(annotated),
-                                            'DINOv2 Model': str(dino),
-                                            'DINOv2 Layers': str(d_layers_name),
-                                            'DINOv2 Scales': str(scale_combo["DINOv2"]),
-                                            'VGG16 Layers': str(vgg16_layers),
-                                            'VGG16 Scales': str(scale_combo["VGG16"]),
-                                            'Accuracy': pred[-1],
-                                            'Execution Time': time() - start}, index = [0])
-                    df = pd.concat([df, new_row], ignore_index=True)
+            for d_scale_combo in dinov2_scales_to_loop:
+                print(f'Running tests for DINOv2 model {dino}, layers {d_layers}, scales {d_scale_combo}...')
+                for vgg16_layers in vgg16_layer_combos:
+                    vgg16_scales_to_loop = ((),) if vgg16_layers is None else vgg16_scale_combos
+                    for v_scale_combo in vgg16_scales_to_loop:
+                        print(f'    Running tests for VGG16 layers {vgg16_layers}, scales {v_scale_combo}...')
+                        # Define the scale combo to use for downstream analyses
+                        scale_combo = {"DINOv2": d_scale_combo, "VGG16": v_scale_combo}
+                        # Get starting time
+                        start = time()
+                        # Selfpredict if no image to predict is specified
+                        if image_to_pred is None:
+                            pred = selfpredict_dino_forest(image_to_train, labels_to_train, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
+                        # Otherwise predict labels for the given image
+                        else:
+                            train = train_dino_forest(image_to_train, labels_to_train, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
+                            random_forest = train[0]
+                            pred = predict_dino_forest(image_to_pred, random_forest, ground_truth, dinov2_model=dino, dinov2_layers=d_layers, upscale_order=upscale_order, pad_mode=pad_mode, extra_pads=extra_pads, scales=scale_combo, vgg16_layers=vgg16_layers, append_image_as_feature=im_feat, show_napari=False)
+                        # Add the results to the DataFrame
+                        new_row = pd.DataFrame({'Image': str("Test_Image"),
+                                                'Annotated': str(annotated),
+                                                'DINOv2 Model': str(dino),
+                                                'DINOv2 Layers': str(d_layers_name),
+                                                'DINOv2 Scales': str(d_scale_combo),
+                                                'VGG16 Layers': str(vgg16_layers),
+                                                'VGG16 Scales': str(v_scale_combo),
+                                                'Accuracy': pred[-1],
+                                                'Execution Time': time() - start}, index = [0])
+                        df = pd.concat([df, new_row], ignore_index=True)
     # Optionally save the DataFrame to a csv file
     if write_csv:
         time_stamp = datetime.now().strftime("%y%m%d%H%M%S")
