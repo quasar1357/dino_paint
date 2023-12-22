@@ -6,7 +6,7 @@ dino_paint is an implementation of semantic segmentation using Meta AI's [DINOv2
 
 This notebook guides through standard applications such as feature extraction, training and prediciton. It also includes self-prediction, where features of an image are only extracted once, and used for training and prediction on itself. Finally, it enables running automated tests of accuracy and execution times using different model selections.
 
-The code still uses some utility and wrapper functions from conv_paint, which is, therefore, a requirement.
+The code uses some utility and wrapper functions from conv_paint, which is, therefore, a requirement.
 
 Note that the Notebook can also be loaded as a Google Colab notebook by clicking on the badge in its head.
 
@@ -16,7 +16,7 @@ This script runs a (possibly large) set of tests and saves the results as a pand
 
 ## dino_evaluate (notebook)
 
-This notebook provides interactive evaluation of outputs from the tests that can be run either through the notebook dino_paint.ipynb or the script dino_tests.py.
+This notebook provides interactive evaluation of outputs from the tests that can be run either through the notebook dino_paint.ipynb or the script dino_tests.py (each calling the function test_dino_forest() from the script dino_utils.py).
 
 ## dino_paint_utils.py
 
