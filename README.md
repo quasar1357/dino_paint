@@ -4,10 +4,10 @@ dino_paint is an implementation of semantic segmentation using Meta AI's [DINOv2
 
 ## Notebook dino_paint.ipynb
 
-This notebook guides through standard applications such as feature extraction, training and prediciton. It also includes self-prediction, where features of an image are only extracted once, and used for training and prediction on itself. Finally, it enables running automated tests of accuracy using different model selections.
+This notebook guides through standard applications such as feature extraction, training and prediciton. It also includes self-prediction, where features of an image are only extracted once, and used for training and prediction on itself. Finally, it enables running automated tests of accuracy and execution times using different model selections.
 
 Note that the code still uses some utility and wrapper functions from conv_paint, which is, therefore, a requirement.
 
 ## dino_paint_utils.py
 
-This script contains all the functions used for feature extraction with DINOv2, feature extraction with VGG16 and classification using utility and wrapper functions from conv_paint.
+This script contains all the functions used for feature extraction with DINOv2 and/or VGG16 as well as classification with a random forest. It uses some utility and wrapper functions from conv_paint.
