@@ -286,6 +286,8 @@ def normalize_np_array(array, new_mean, new_sd, axis=(0,1)):
     Normalizes a numpy array to a new mean and standard deviation.
     '''
     current_mean, current_sd = np.mean(array, axis=axis), np.std(array, axis=axis)
+    # Avoid division by zero; leads to setting channels with all the same value to the new mean
+    current_sd[current_sd == 0] = 1
     new_mean, new_sd = np.array(new_mean), np.array(new_sd)
     array_norm = (array - current_mean) / current_sd
     array_norm = array_norm * new_sd + new_mean
