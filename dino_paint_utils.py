@@ -279,6 +279,9 @@ def ensure_rgb(image):
         image_rgb = np.stack((image,)*3, axis=-1)
     else:
         image_rgb = image
+    # If there are only 2 colour channels, artificially create one more channel with zeroes
+    if image_rgb.shape[2] == 2:
+        image_rgb = np.concatenate((image_rgb, np.zeros_like(image_rgb[:,:,0:1])), axis=2)
     return image_rgb
 
 def normalize_np_array(array, new_mean, new_sd, axis=(0,1)):

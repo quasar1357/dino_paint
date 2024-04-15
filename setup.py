@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='dinopaint',
-    version='0.2',
+    version='0.2.1',
     description='DINOv2 with VGG16 for semantic segmentation using a random forest classifier',
     author='Roman Schwob',
     author_email='roman.schwob@students.unibe.ch',
