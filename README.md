@@ -35,3 +35,6 @@ The script [dino_tests.py](dino_tests.py) runs a (possibly large) set of tests a
 ## Evaluation notebook
 
 The notebook [dino_evaluate](dino_evaluate) provides interactive evaluation of outputs from the tests that can be run either through the notebook dino_paint.ipynb or the script dino_tests.py (each calling the function test_dino_forest() from the script dino_utils.py).
+
+## Issues
+If you encounter any problems, please file an [issue](https://github.com/quasar1357/dino_paint/issues) along with a detailed description.
