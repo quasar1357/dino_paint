@@ -22,7 +22,7 @@ Use this notebook to learn about how to use the core functions of [dino_paint_ut
 
 The code uses some utility and wrapper functions from conv_paint, which is, therefore, a requirement.
 
-Note that the Notebook can also be loaded as a Google Colab notebook by clicking on the badge in its head.
+Note that the notebook can also be loaded as a Google Colab notebook by clicking on the badge in its head.
 
 ## Utils script
 
