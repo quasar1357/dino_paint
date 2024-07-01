@@ -4,7 +4,7 @@ dino_paint is an implementation of semantic segmentation using Meta AI's [DINOv2
 
 If you decide to use some of my code in any sort of public work, please do contact and cite me.
 
-Once you're here, also have a look at my project [scribbles_creator](https://github.com/quasar1357/scribbles_creator), which can be a great help in testing tools for semantic segmentation such as dino_paint.
+Once you're here, also have a look at my project [scribbles_creator](https://github.com/quasar1357/scribbles_creator), which can be a great help in testing tools for semantic segmentation such as dino_paint, and [seghub](https://github.com/quasar1357/scribbles_creator) which builds and extends the ideas from dino_paint to semantic segmentation using various means of feature extraction combined with means of pixel classification.
 
 ## Installation
 You can install dino_paint via pip using
